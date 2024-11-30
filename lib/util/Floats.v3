@@ -1,0 +1,37 @@
+component Floats {
+
+	def max(x: double, y: double) -> double {
+		return if(x > y, x, y);
+	}
+	def min(x: double, y: double) -> double {
+		return if(x < y, x, y);
+	}
+	def abs(x: double) -> double {
+		return if (x > 0, x, -x);
+	}
+
+	// Creates a string representation of a double to some number of decimal places.
+	def toString(v: double, places: int) -> string {
+		def str: StringBuilder = StringBuilder.new();
+
+		var bits = u64.view(v);
+		if ((bits >> 63) != 0) str.putc('-');
+		v = double.view(bits & ~(1uL << 63));
+		if (v == double.infinity) return "Infinity";
+		if (v != v) return "NaN";
+		var mag = 1d;
+		while ((mag * 10d) < v) mag = mag * 10d;
+		var min = 0.1;
+		for (i < places) min /= 10.0;
+		while (mag > min) {
+			var digit = int.truncd(v / mag);
+			str.putd(digit);
+			if (mag == 1d) str.putc('.');
+			v -= mag * digit;
+			mag = mag / 10;
+		}
+		// TODO: round last digit properly
+
+		return str.extract();
+	}
+}

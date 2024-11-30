@@ -179,6 +179,14 @@ component Maps {
 		map.apply(v.add);
 		return v.list;
 	}
+	// Creates a HashMap out of an arrayt of key-value pairs.
+	def fromArray<K, V>(list: Array<(K, V)>, hash: K -> int, equals: (K, K) -> bool) -> HashMap<K, V> {
+		def map: HashMap<K, V> = HashMap.new(hash, equals);
+		for (entry in list) {
+			map[entry.0] = entry.1;
+		}
+		return map;
+	}
 }
 
 // Internal data structure needed by HashMap to represent chained buckets.

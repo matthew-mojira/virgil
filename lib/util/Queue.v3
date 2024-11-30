@@ -1,0 +1,32 @@
+// A linked-list Queue implementation.
+class Queue<T> {
+	private var head: QueueNode<T>;
+	private var tail: QueueNode<T>;
+
+	def enqueue(elem: T) {
+		def node = QueueNode.new(elem, null);
+		if (head == null) {
+			head = node;
+		} else {
+			tail.next = node;
+		}
+		tail = node;
+	}
+	def dequeue() -> T {
+		def elem = head.elem;
+		head = head.next;
+		return elem;
+	}
+	def isEmpty() -> bool {
+		return head == null;
+	}
+	def length() -> int {
+		var length = 0;
+		for (elem = head; elem != null; elem = elem.next) {
+			length += 1;
+		}
+		return length;
+	}
+}
+
+private class QueueNode<T>(elem: T, var next: QueueNode<T>) { }

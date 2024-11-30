@@ -112,6 +112,42 @@ class Vector<T> {
 		if (nlength > length) grow(nlength);
 		length = nlength;
 	}
+	// Creates an iterator for this vector. Okay to add elements to the vector,
+	// but only at the end.
+	def iterator() -> VecIterator<T> {
+		return VecIterator.new(this);
+	}
+	// Swaps elements in-place.
+	def swap(i: int, j: int) -> this {
+		def tmp = this[j];
+		this[j] = this[i];
+		this[i] = tmp;
+	}
+	// Shuffles vector in-place.
+	def shuffle() -> this {
+		for (i = length - 1; i > 0; i--) {
+			def j = Random.random(i + 1);
+			swap(i, j);
+		}
+	}
+}
+
+private class VecIterator<T>(vector: Vector<T>) extends Iterator<T> {
+	private var index: int;
+	private var deleted: bool = true;
+
+	def hasNext() -> bool {
+		return index < vector.length;
+	}
+	def next() -> T {
+		deleted = false;
+		return vector[index++];
+	}
+	def delete() {
+		if (deleted) return;
+		vector.putr(Arrays.deleteAt(vector.extract(), index - 1));
+		deleted = true;
+	}
 }
 
 // Utility methods for vectors.

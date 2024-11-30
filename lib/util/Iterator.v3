@@ -1,0 +1,9 @@
+class Iterator<T> {
+	// Whether or not there are elements left to iterate over
+	def hasNext() -> bool;
+	// Get the next element.
+	def next() -> T;
+	// Deletes the element just retrieved with `next()`. Can be left
+	// unimplemented if this is an unsupported operation on the data structure.
+	def delete();
+}
