@@ -701,7 +701,7 @@ class VstSsaGen extends VstVisitor<VstSsaEnv, SsaInstr> {
 				return env.addOp(op, Facts.NONE);
 			}
 			RefLayoutField(receiver, member) => {
-				var op = V3Op.newRefLayoutGetField(receiver, member.byteOffset, member.mtref.getType());
+				var op = V3Op.newRefLayoutGetField(receiver, member.byteOffset, member.mtref.getType(), member.order);
 				return env.addApplyF(op, [obj], Facts.NONE);
 			}
 			RefLayoutNested(receiver, member) => {
@@ -709,7 +709,7 @@ class VstSsaGen extends VstVisitor<VstSsaEnv, SsaInstr> {
 				return env.addApplyF(op, [obj], Facts.NONE);
 			}
 			LayoutField(receiver, member) => {
-				var op = V3Op.newRefLayoutGetField(receiver, member.byteOffset, member.mtref.getType());
+				var op = V3Op.newRefLayoutGetField(receiver, member.byteOffset, member.mtref.getType(), member.order);
 				return env.addOp(op, Facts.NONE);
 			}
 			LayoutNested(receiver, member) => {
@@ -819,7 +819,7 @@ class VstSsaGen extends VstVisitor<VstSsaEnv, SsaInstr> {
 				env.opComponentSetField(spec, obj, val);
 			}
 			RefLayoutField(receiver, member) => {
-				var op = V3Op.newRefLayoutSetField(receiver, member.byteOffset, member.mtref.getType());
+				var op = V3Op.newRefLayoutSetField(receiver, member.byteOffset, member.mtref.getType(), member.order);
 				return env.addApplyF(op, [obj, val], Facts.NONE);
 			}
 			_ => {
@@ -880,10 +880,12 @@ class VstSsaGen extends VstVisitor<VstSsaEnv, SsaInstr> {
 			}
 			PtrAtComponentField(receiver, field, ptrType) => {
 				var spec = specOf(receiver, field, null);
+				var irFld = spec.asField();
 				return env.addApply(env.source, V3Op.newPtrAtComponentField(spec, ptrType), Ssa.NO_INSTRS);
 			}
 			PtrAtObjectField(receiver, field, ptrType) => {
 				var spec = specOf(receiver, field, null);
+				var irFld = spec.asField();
 				return env.addApply(env.source, V3Op.newPtrAtObjectField(spec, ptrType), [target]);
 			}
 			PtrAtRefLayoutField(receiver, field, ptrType) => {

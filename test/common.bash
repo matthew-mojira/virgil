@@ -174,7 +174,9 @@ function run_io_test() {
 	return 0
     fi
 
-    local P=$T/$(basename $test)
+    R=$(basename $runner)
+    mkdir -p $T/$R/
+    local P=$T/$R/$(basename $test)
 
     infile=${test##*/}.in
     if [ -f $infile ]; then
@@ -338,6 +340,7 @@ function check_cached_target_tests() {
 function execute_target_tests() {
     target=$1
     R=$OUT/$target/run.out
+    FAIL=0
     if [ -d "$TEST_CACHE/$SUITE/$target" ]; then
 	print_status "   cached" ""
 	ext=""
@@ -360,6 +363,7 @@ function execute_target_tests() {
 	    if [ -x $runner ]; then
 		print_status "  running" "${r/test-$target/}"
 		$runner $OUT/$target $TORUN | tee $OUT/$target/run.out | $PROGRESS
+                FAIL=$(($FAIL | $?))
 		RAN=1
 	    fi
 	done
@@ -370,6 +374,7 @@ function execute_target_tests() {
 	    printf "$count ${YELLOW}no runners found${NORM}\n"
 	fi
     fi
+    return $FAIL
 }
 
 function execute_tests() {

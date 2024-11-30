@@ -12,7 +12,11 @@ component System {
 	}
 	// open a file
 	def fileOpen(path: string, read: bool) -> int {
-		var r = wasi_snapshot_preview1.path_open(3, 0, Pointer.atContents(path), path.length, 0, 0, 0, 0, Pointer.atContents(retbuf));
+		var pre_fd = WasiPreopens.find(path);
+		if (pre_fd < 0) return -1;
+		var rights = (1 << if(read, wasi_rights.fd_read, wasi_rights.fd_write).tag) |
+			(1 << wasi_rights.fd_seek.tag);
+		var r = wasi_snapshot_preview1.path_open(pre_fd, 0, Pointer.atContents(path), path.length, 0, rights, rights, 0, Pointer.atContents(retbuf));
 		if (r != 0) return -1;
 		return Pointer.atContents(retbuf).load<int>();
 	}
@@ -47,13 +51,14 @@ component System {
 	def fileLoad(path: string) -> Array<byte> {
 		var fd = fileOpen(path, true);
 		if (fd < 0) return null;
-		var r = wasi_snapshot_preview1.fd_seek(fd, 0, wasi_whence.END.tag, Pointer.atContents(retbuf));
+		var sizeptr = aligned_sizeptr();
+		var r = wasi_snapshot_preview1.fd_seek(fd, 0, wasi_whence.END.tag, sizeptr);
 		if (r < 0) {
 			wasi_snapshot_preview1.fd_close(fd);
 			return null;
 		}
-		var len = int.!(Pointer.atContents(retbuf).load<u64>());
-		r = wasi_snapshot_preview1.fd_seek(fd, 0, wasi_whence.SET.tag, Pointer.atContents(retbuf));
+		var len = int.!(sizeptr.load<u64>());
+		r = wasi_snapshot_preview1.fd_seek(fd, 0, wasi_whence.SET.tag, sizeptr);
 		if (r < 0) {
 			wasi_snapshot_preview1.fd_close(fd);
 			return null;
@@ -116,9 +121,18 @@ component System {
 	def ticksNs() -> int {
 		return int.view(wasiNs());
 	}
+	// write some bytes to the file
+	def write(fd: int, data: Range<byte>) -> int {
+		return fs_write(fd, Pointer.atContents(data), data.length);
+	}
+	// read some bytes from the file
+	def read(fd: int, data: Range<byte>) -> int {
+		return fs_read(fd, Pointer.atContents(data), data.length);
+	}
 	private def wasiNs() -> u64 {
-		wasi_snapshot_preview1.clock_time_get(0, 10000, Pointer.atContents(iobuf));
-		var tv_nsecs = Pointer.atContents(iobuf).load<u64>();
+		var sizebuf = aligned_sizeptr(); // TODO: use a proper layout here
+		wasi_snapshot_preview1.clock_time_get(0, 10000, sizebuf);
+		var tv_nsecs = sizebuf.load<u64>();
 		return tv_nsecs;
 	}
 }
@@ -126,11 +140,12 @@ component System {
 def STDIN  = 0;
 def STDOUT = 1;
 def STDERR = 2;
+def MAX_PREOPEN = 10;
 
 // @thread-local @lazy buffer for write integers and chars to System.out
 def numbuf = Array<byte>.new(16);
 def iobuf = Array<byte>.new(16);
-def retbuf = Array<byte>.new(16);
+def retbuf = Array<byte>.new(32);
 
 def BCE = "BoundsCheckException";
 def EMPTY = "";
@@ -144,7 +159,7 @@ def fs_write(fd: int, data: Pointer, len: int) -> int {
 	var p = Pointer.atContents(iobuf);
 	(p + 0).store<int>(data - Pointer.NULL);
 	(p + 4).store<int>(len);
-	var sizeptr = Pointer.atContents(retbuf);
+	var sizeptr = aligned_sizeptr();
 	var r = wasi_snapshot_preview1.fd_write(fd, p, 1, sizeptr);
 	return if(r == 0, sizeptr.load<int>());
 }
@@ -152,7 +167,12 @@ def fs_read(fd: int, data: Pointer, len: int) -> int {
 	var p = Pointer.atContents(iobuf);
 	(p + 0).store<int>(data - Pointer.NULL);
 	(p + 4).store<int>(len);
-	var sizeptr = Pointer.atContents(retbuf);
+	var sizeptr = aligned_sizeptr();
 	var r = wasi_snapshot_preview1.fd_read(fd, p, 1, sizeptr);
 	return if(r == 0, sizeptr.load<int>());
+}
+def aligned_sizeptr() -> Pointer {
+	var addr = Pointer.atContents(retbuf) - Pointer.NULL;
+	addr = (addr + 7) & ~7;
+	return Pointer.NULL + addr;
 }
