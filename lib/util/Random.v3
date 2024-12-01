@@ -3,7 +3,7 @@
 
 // Utilities for random numbers.
 component Random {
-	var seed = 121013;
+	var seed = System.ticksNs();
 
 	// Return a pseudo-random number in the interval [0, max).
 	def random(max: int) -> int {
@@ -20,6 +20,9 @@ component Random {
 	def next() -> int {
 		var s = seed * 1664525 + 1013904223;         // multiplicativea random
 		return seed = s ^ (s >>> 16) ^ (s >>> 24);   // XOR of higher bits
+	}
+	def nextDouble() -> double {
+		return double.!(Random.random(int.max)) / double.!(int.max);
 	}
 	// Use a random number to flip a coin with a given probability.
 	def flip(num: int, denom: int) -> bool {
