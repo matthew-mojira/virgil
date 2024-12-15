@@ -1,0 +1,4 @@
+type Maybe<T> {
+	case Just(val: T);
+	case Nothing;
+}

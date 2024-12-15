@@ -41,6 +41,36 @@ class StringBuilder {
 		offset = putArg(fmt, offset, p3);
 		finishFmt(fmt, offset);
 	}
+	// Format a string, rendering (4) arguments according to {fmt}.
+	def put4<T1, T2, T3, T4>(fmt: string, p1: T1, p2: T2, p3: T3, p4: T4) -> this {
+	    var offset = 0;
+	    offset = putArg(fmt, offset, p1);
+	    offset = putArg(fmt, offset, p2);
+	    offset = putArg(fmt, offset, p3);
+	    offset = putArg(fmt, offset, p4);
+	    finishFmt(fmt, offset);
+	}
+	// Format a string, rendering (5) arguments according to {fmt}.
+	def put5<T1, T2, T3, T4, T5>(fmt: string, p1: T1, p2: T2, p3: T3, p4: T4, p5: T5) -> this {
+	    var offset = 0;
+	    offset = putArg(fmt, offset, p1);
+	    offset = putArg(fmt, offset, p2);
+	    offset = putArg(fmt, offset, p3);
+	    offset = putArg(fmt, offset, p4);
+	    offset = putArg(fmt, offset, p5);
+	    finishFmt(fmt, offset);
+	}
+	// Format a string, rendering (6) arguments according to {fmt}.
+	def put6<T1, T2, T3, T4, T5, T6>(fmt: string, p1: T1, p2: T2, p3: T3, p4: T4, p5: T5, p6: T6) -> this {
+	    var offset = 0;
+	    offset = putArg(fmt, offset, p1);
+	    offset = putArg(fmt, offset, p2);
+	    offset = putArg(fmt, offset, p3);
+	    offset = putArg(fmt, offset, p4);
+	    offset = putArg(fmt, offset, p5);
+	    offset = putArg(fmt, offset, p6);
+	    finishFmt(fmt, offset);
+	}
 	// Append an integer (of any width) as decimal.
 	def putd<T>(i: T) -> this {
 		match (i) {

@@ -23,6 +23,7 @@ component Strings {
 			j--;
 		}
 
+		if (j < i) return Array.new(0);
 		return Arrays.range(str, i, j + 1);
 	}
 	// Check if {str} starts with {start}, i.e. the latter is a prefix.
@@ -126,6 +127,24 @@ component Strings {
 	def format3<A, B, C>(fmt: string, a: A, b: B, c: C) -> string {
 		return StringBuilder.new().put3(fmt, a, b, c).toString();
 	}
+	// Render the {fmt} format string with the given parameters {a}, {b}, {c}, and {d} and return a
+	// string.
+	def format4<A, B, C, D>(fmt: string, a: A, b: B, c: C, d: D) -> string {
+	    return StringBuilder.new().put4(fmt, a, b, c, d).toString();
+	}
+
+	// Render the {fmt} format string with the given parameters {a}, {b}, {c}, {d}, and {e} and return a
+	// string.
+	def format5<A, B, C, D, E>(fmt: string, a: A, b: B, c: C, d: D, e: E) -> string {
+	    return StringBuilder.new().put5(fmt, a, b, c, d, e).toString();
+	}
+
+	// Render the {fmt} format string with the given parameters {a}, {b}, {c}, {d}, {e}, and {f} and return a
+	// string.
+	def format6<A, B, C, D, E, F>(fmt: string, a: A, b: B, c: C, d: D, e: E, f: F) -> string {
+	    return StringBuilder.new().put6(fmt, a, b, c, d, e, f).toString();
+	}
+
 	// Parse a double-quoted string constant in {a} at {pos},
 	// returning a pair of status (# success characters if > 0) and the value.
 	def parseLiteral(a: Array<byte>, pos: int) -> (int, string) {
