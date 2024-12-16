@@ -130,6 +130,31 @@ class Vector<T> {
 			swap(i, j);
 		}
 	}
+	// Extracts first {n} elements from the Vector up to how many it has
+	// remaining
+	def extractn(n: int) -> Array<T> {
+		def res: Vector<T> = Vector.new();
+		def it = iterator();
+		while (it.hasNext() && n > 0) {
+			res.put(it.next());
+			it.delete();
+		}
+		return res.extract();
+	}
+	// Extracts random {n} elements from the Vector (shuffles the vector
+	// beforehand)
+	def extractrn(n: int) -> Array<T> {
+		shuffle();
+
+		def res: Vector<T> = Vector.new();
+		def it = iterator();
+		while (it.hasNext() && n > 0) {
+			res.put(it.next());
+			it.delete();
+			n -= 1;
+		}
+		return res.extract();
+	}
 }
 
 private class VecIterator<T>(vector: Vector<T>) extends Iterator<T> {

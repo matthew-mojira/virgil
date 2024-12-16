@@ -3,7 +3,7 @@
 
 // Utilities for random numbers.
 component Random {
-	var seed = System.ticksNs();
+	var seed = 80239745;
 
 	// Return a pseudo-random number in the interval [0, max).
 	def random(max: int) -> int {
