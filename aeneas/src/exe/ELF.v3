@@ -64,6 +64,7 @@ component ElfConst {
 
 // Represents the header of an ELF file, including both section headers and program headers.
 class ElfHeader {
+	var e_type: int = 2;
 	var e_entry: long;
 	var e_flags: int;
 	var e_machine: int;
@@ -82,7 +83,7 @@ class ElfHeader {
 		w.putb(1);			// EI_DATA = LSB
 		w.putb(1);			// EI_VERSION = EI_CURRENT
 		w.zeroN(9);			// padding
-		w.put_b16(2);			// e_type = executable
+		w.put_b16(e_type);	        // e_type
 		w.put_b16(e_machine);		// e_machine
 		w.put_b32(1);			// e_version = current
 		w.put_b32(int.view(e_entry));	// program entrypoint
@@ -106,7 +107,7 @@ class ElfHeader {
 		w.putb(1);			// EI_DATA = LSB
 		w.putb(1);			// EI_VERSION = EI_CURRENT
 		w.zeroN(9);			// padding
-		w.put_b16(2);			// e_type = executable
+		w.put_b16(e_type);		// e_type
 		w.put_b16(e_machine);		// e_machine
 		w.put_b32(1);			// e_version = current
 		w.put_b64(e_entry);		// program entrypoint
