@@ -64,6 +64,7 @@ class LinuxTarget extends Target {
 		return MachProgram.!(prog.tprog).runtime;
 	}
 	def emit(compiler: Compiler, prog: Program) {
+			
 		var rt = getRuntime(prog), mach = rt.mach;
 		mach.build(compiler, machLoweringConfig);
 

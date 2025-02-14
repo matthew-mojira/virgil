@@ -164,6 +164,8 @@ component CLOptions {
 		"Unbox all non-recursive variants.");
 	def REDEF_FIELD		= compileOpt.newStringOption("redef-field", null,
 		"Redefine one or more program fields, setting them to the given values.");
+	def OBJECT_FILE		= compileOpt.newBoolOption("object-file", false, 
+		"Generate a ELF object file for linking purposes");
 	// JVM target options
 	def JVM_RT_PATH		= jvmOpt.newStringOption("jvm.rt-path", null,
 		"Specify the path to the Java runtime.");
