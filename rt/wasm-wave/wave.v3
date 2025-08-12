@@ -3,6 +3,8 @@
 
 // Imports for (W)eb(A)ssembly (V)irgil (E)nvironment.
 import component wave {
+	def new_func(sig_idx: int, code: Pointer, len: int) -> int;
+
 	def arg_len(arg: int) -> int;
 	def arg_copy(arg: int, buf: Pointer, buf_len: int) -> int;
 
