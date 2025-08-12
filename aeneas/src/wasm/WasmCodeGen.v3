@@ -832,7 +832,7 @@ class WasmCodeGen extends SsaMachGen {
 			VARIANT => {
 				emit1(WasmOp.I32_CONST.opcode, useImm(val));
 			}
-			VOID => ;
+			VOID => emit1(WasmOp.I32_CONST.opcode, useImm(Int.ZERO));
 			_ => context.fail1("unimplemented insertLoadConst() of type %q", t.render);
 		}
 	}
