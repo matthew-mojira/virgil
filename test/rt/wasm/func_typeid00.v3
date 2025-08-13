@@ -1,6 +1,6 @@
 //@execute = false
-def main() -> bool {
+def main() -> int {
 	var a = CiWasmTarget.functionTypeId<int, void>();
 	var b = CiWasmTarget.functionTypeId<int, int>();
-	return a == b;
+	return if(a != b, -1);
 }
