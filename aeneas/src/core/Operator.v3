@@ -418,6 +418,10 @@ component V3Op {
 		var funcType = Function.newType(param, result);
 		return newOp0(Opcode.ForgeClosure, [receiver, param, result], [ptrType, receiver], funcType);
 	}
+	def newWasmIndirectFunc(ptrType: Type, param: Type, result: Type) -> Operator {
+		var funcType = Function.newType(param, result);
+		return newOp0(Opcode.WasmForgeClosure, [param, result], [ptrType], funcType);
+	}
 	def newUnpackClosure(ptrType: Type, receiver: Type, param: Type, result: Type) -> Operator {
 		var funcType = Function.newType(param, result);
 		return newOp0(Opcode.UnpackClosure, [receiver, param, result], [funcType], Tuple.newType(Lists.cons2(ptrType, receiver)));
