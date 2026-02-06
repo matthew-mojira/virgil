@@ -1,0 +1,152 @@
+// 65C816 Disassembler
+class Disassembler65816 {
+	var m: bool = true;
+	var x: bool = true;
+
+	def disassemble(memory: Array<u8>, addr: int) -> (string, int) {
+		if (addr >= memory.length) return ("<invalid>", 0);
+		var opcode = memory[addr];
+		var decoded = Wdc65C816.OPCODE_TABLE[opcode];
+		var op = decoded.0;
+		var mode = decoded.1;
+		var pc = addr + 1;
+		var operandStr = formatOperand(memory, pc, op, mode);
+		var instrLen = getInstructionLength(op, mode);
+		var mnemonicStr = op.name;
+		var result: string;
+		if (operandStr.length > 0) {
+			result = Strings.format2("%s %s", mnemonicStr, operandStr);
+		} else {
+			result = mnemonicStr;
+		}
+		return (result, instrLen);
+	}
+
+	def getInstructionLength(op: Opcode, mode: AddrMode) -> int {
+		var base = 1;
+		match (mode) {
+			IMPLIED, ACCUM => return base;
+			IMM => {
+				match (op) {
+					ADC, SBC, AND, EOR, ORA, LDA, CMP, BIT => {
+						return if(m, base + 1, base + 2);
+					}
+					LDX, LDY, CPX, CPY => {
+						return if(x, base + 1, base + 2);
+					}
+					REP, SEP, WDM, COP, BRK => return base + 1;
+					_ => return base + 1;
+				}
+			}
+			DIR, DIR_IND, DIR_INDL, STK => return base + 1;
+			DIR_X, DIR_Y, DIR_IND_Y, DIR_INDL_Y, DIR_X_IND, STK_IND_Y => return base + 1;
+			ABS, ABS_IND => return base + 2;
+			ABS_X, ABS_Y, ABS_X_IND => return base + 2;
+			LONG, ABS_INDL => return base + 3;
+			LONG_X => return base + 3;
+			REL8 => return base + 1;
+			REL16 => return base + 2;
+			SRC_DEST => return base + 2;
+		}
+	}
+
+	def formatOperand(memory: Array<u8>, pc: int, op: Opcode, mode: AddrMode) -> string {
+		match (mode) {
+			IMPLIED, ACCUM => return "";
+			IMM => {
+				match (op) {
+					ADC, SBC, AND, EOR, ORA, LDA, CMP, BIT => {
+						return if(m, formatImmediate8(memory, pc), formatImmediate16(memory, pc));
+					}
+					LDX, LDY, CPX, CPY => {
+						return if(x, formatImmediate8(memory, pc), formatImmediate16(memory, pc));
+					}
+					_ => return formatImmediate8(memory, pc);
+				}
+			}
+			ABS => return formatAbsolute(memory, pc);
+			ABS_X => return formatAbsoluteX(memory, pc);
+			ABS_Y => return formatAbsoluteY(memory, pc);
+			ABS_IND => return Strings.format1("($%x)", read16(memory, pc));
+			ABS_INDL => return Strings.format1("[$%x]", read16(memory, pc));
+			ABS_X_IND => return Strings.format1("($%x,X)", read16(memory, pc));
+			DIR => return formatDirect(memory, pc);
+			DIR_X => return formatDirectX(memory, pc);
+			DIR_Y => return Strings.format1("$%x,Y", read8(memory, pc));
+			DIR_IND => return Strings.format1("($%x)", read8(memory, pc));
+			DIR_INDL => return Strings.format1("[$%x]", read8(memory, pc));
+			DIR_IND_Y => return Strings.format1("($%x),Y", read8(memory, pc));
+			DIR_INDL_Y => return Strings.format1("[$%x],Y", read8(memory, pc));
+			DIR_X_IND => return Strings.format1("($%x,X)", read8(memory, pc));
+			LONG => return Strings.format1("$%x", read24(memory, pc));
+			LONG_X => return Strings.format1("$%x,X", read24(memory, pc));
+			REL8 => return Strings.format1("$%x", pc + i8.view(read8(memory, pc)) + 1);
+			REL16 => return Strings.format1("$%x", pc + i16.view(read16(memory, pc)) + 2);
+			STK => return Strings.format1("$%x,S", read8(memory, pc));
+			STK_IND_Y => return Strings.format1("($%x,S),Y", read8(memory, pc));
+			SRC_DEST => return Strings.format2("$%x,$%x", read8(memory, pc), read8(memory, pc + 1));
+		}
+	}
+
+	def read8(memory: Array<u8>, pc: int) -> u8 {
+		if (pc >= memory.length) return 0;
+		return memory[pc];
+	}
+
+	def read16(memory: Array<u8>, pc: int) -> u16 {
+		if (pc + 1 >= memory.length) return 0;
+		return u16.view(memory[pc]) | (u16.view(memory[pc + 1]) << 8);
+	}
+
+	def read24(memory: Array<u8>, pc: int) -> u24 {
+		if (pc + 2 >= memory.length) return 0;
+		return u24.view(memory[pc]) | (u24.view(memory[pc + 1]) << 8) | (u24.view(memory[pc + 2]) << 16);
+	}
+
+	def formatImmediate8(memory: Array<u8>, pc: int) -> string {
+		if (pc >= memory.length) return "#$??";
+		return Strings.format1("#$%x", memory[pc]);
+	}
+
+	def formatImmediate16(memory: Array<u8>, pc: int) -> string {
+		if (pc + 1 >= memory.length) return "#$????";
+		var lo = memory[pc];
+		var hi = memory[pc + 1];
+		var value = (u16.view(hi) << 8) | u16.view(lo);
+		return Strings.format1("#$%x", value);
+	}
+
+	def formatAbsolute(memory: Array<u8>, pc: int) -> string {
+		if (pc + 1 >= memory.length) return "$????";
+		var lo = memory[pc];
+		var hi = memory[pc + 1];
+		var value = (u16.view(hi) << 8) | u16.view(lo);
+		return Strings.format1("$%x", value);
+	}
+
+	def formatAbsoluteX(memory: Array<u8>, pc: int) -> string {
+		if (pc + 1 >= memory.length) return "$????,X";
+		var lo = memory[pc];
+		var hi = memory[pc + 1];
+		var value = (u16.view(hi) << 8) | u16.view(lo);
+		return Strings.format1("$%x,X", value);
+	}
+
+	def formatAbsoluteY(memory: Array<u8>, pc: int) -> string {
+		if (pc + 1 >= memory.length) return "$????,Y";
+		var lo = memory[pc];
+		var hi = memory[pc + 1];
+		var value = (u16.view(hi) << 8) | u16.view(lo);
+		return Strings.format1("$%x,Y", value);
+	}
+
+	def formatDirect(memory: Array<u8>, pc: int) -> string {
+		if (pc >= memory.length) return "$??";
+		return Strings.format1("$%x", memory[pc]);
+	}
+
+	def formatDirectX(memory: Array<u8>, pc: int) -> string {
+		if (pc >= memory.length) return "$??,X";
+		return Strings.format1("$%x,X", memory[pc]);
+	}
+}

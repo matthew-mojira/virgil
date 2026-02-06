@@ -1,0 +1,381 @@
+enum Opcode(flags: Flag.set, modes: AddrMode.set) {
+	ADC(N | V | Z | C, DATA_MODES),
+	SBC(N | V | Z | C, DATA_MODES),
+	// Compare instructions
+	CMP(N | Z | C, DATA_MODES),
+	CPX(N | Z | C, IMM | DIR | ABS),
+	CPY(N | Z | C, IMM | DIR | ABS),
+	// Increment/Decrement instructions
+	DEC(N | Z, DIR | DIR_X | ABS | ABS_X | ACC),
+	DEX(N | Z, IMP),
+	DEY(N | Z, IMP),
+	INC(N | Z, DIR | DIR_X | ABS | ABS_X | ACC),
+	INX(N | Z, IMP),
+	INY(N | Z, IMP),
+	// Logical operations
+	AND(N | Z, DATA_MODES),
+	EOR(N | Z, DATA_MODES),
+	ORA(N | Z, DATA_MODES),
+	// Bit test
+	BIT(N | V | Z, IMM | DIR | DIR_X | ABS | ABS_X),
+	// Test and Reset/Set Bits
+	TRB(Z, DIR | ABS),
+	TSB(Z, DIR | ABS),
+	// Shifts and Rotates
+	ASL(N | Z | C, ACC | DIR | DIR_X | ABS | ABS_X),
+	LSR(N | Z | C, ACC | DIR | DIR_X | ABS | ABS_X),
+	ROL(N | Z | C, ACC | DIR | DIR_X | ABS | ABS_X),
+	ROR(N | Z | C, ACC | DIR | DIR_X | ABS | ABS_X),
+	// Branch instructions
+	BCC(NOFLAGS,REL8),
+	BCS(NOFLAGS,REL8),
+	BEQ(NOFLAGS,REL8),
+	BMI(NOFLAGS,REL8),
+	BNE(NOFLAGS,REL8),
+	BPL(NOFLAGS,REL8),
+	BRA(NOFLAGS,REL8),
+	BVC(NOFLAGS,REL8),
+	BVS(NOFLAGS,REL8),
+	// Branch long
+	BRL(NOFLAGS,REL16),
+	// Jump instructions
+	JMP(NOFLAGS,ABS | ABS_IND | ABS_INDL),
+	JSL(NOFLAGS,LONG),
+	JSR(NOFLAGS,ABS | ABS_X_IND),
+	// Return instructions
+	RTL(NOFLAGS,IMP),
+	RTS(NOFLAGS,IMP),
+	// Software interrupts
+	BRK(B | D | I, IMP | IMM),
+	COP(B | D | I, IMP | IMM),
+	// Return from interrupt
+	RTI(N | V | M | X | D | I | Z | C, IMP),
+	// Clear/Set flag instructions
+	CLC(C, IMP),
+	CLD(D, IMP),
+	CLI(I, IMP),
+	CLV(V, IMP),
+	SEC(C, IMP),
+	SED(D, IMP),
+	SEI(I, IMP),
+	// Reset/Set Program Status
+	REP(N | V | M | X | D | I | Z | C, IMM),
+	SEP(N | V | M | X | D | I | Z | C, IMM),
+	// Load instructions
+	LDA(N | Z, DATA_MODES),
+	LDX(N | Z, IMM | DIR | DIR_Y | ABS | ABS_Y),
+	LDY(N | Z, IMM | DIR | DIR_X | ABS | ABS_X),
+	// Store instructions
+	STA(NOFLAGS,DATA_MODES - IMM),
+	STX(NOFLAGS,DIR | DIR_Y | ABS),
+	STY(NOFLAGS,DIR | DIR_X | ABS),
+	STZ(NOFLAGS,DIR | DIR_X | ABS | ABS_X),
+	// Block move instructions
+	MVN(NOFLAGS,SRC_DEST),
+	MVP(NOFLAGS,SRC_DEST),
+	// No operation
+	NOP(NOFLAGS,IMP),
+	WDM(NOFLAGS,IMM),
+	// Push effective address
+	PEA(NOFLAGS,ABS),
+	PEI(NOFLAGS,DIR_IND),
+	PER(NOFLAGS,REL16),
+	// Push/Pull accumulator and index registers
+	PHA(NOFLAGS,IMP),
+	PHX(NOFLAGS,IMP),
+	PHY(NOFLAGS,IMP),
+	PLA(N | Z, IMP),
+	PLX(N | Z, IMP),
+	PLY(N | Z, IMP),
+	// Push/Pull other registers
+	PHB(NOFLAGS,IMP),
+	PHD(NOFLAGS,IMP),
+	PHK(NOFLAGS,IMP),
+	PHP(NOFLAGS,IMP),
+	PLB(N | Z, IMP),
+	PLD(N | Z, IMP),
+	PLP(N | V | M | X | D | I | Z | C, IMP),
+	// Stop/Wait
+	STP(NOFLAGS,IMP),
+	WAI(NOFLAGS,IMP),
+	// Transfer instructions
+	TAX(N | Z, IMP),
+	TAY(N | Z, IMP),
+	TSX(N | Z, IMP),
+	TXA(N | Z, IMP),
+	TXS(NOFLAGS,IMP),
+	TXY(N | Z, IMP),
+	TYA(N | Z, IMP),
+	TYX(N | Z, IMP),
+	// Transfer 16-bit registers
+	TCD(N | Z, IMP),
+	TCS(NOFLAGS,IMP),
+	TDC(N | Z, IMP),
+	TSC(N | Z, IMP),
+	// Exchange
+	XBA(N | Z, IMP),
+	XCE(C | E, IMP),
+}
+
+enum Flag(code: byte) {
+	BREAK('b'),
+	CARRY('c'),
+	DECIMAL('d'),
+	EMULATION('e'),
+	INTERRUPT_DISABLE('i'),
+	MEMORY_WIDTH('m'),
+	NEGATIVE('n'),
+	OVERFLOW('v'),
+	INDEX_WIDTH('x'),
+	ZERO('z')
+}
+
+enum AddrMode(text: string, sample: string) {
+	IMPLIED("implied", ""),
+	ACCUM("accumulator", "A"),
+	IMM("immediate", "#$12"),
+	ABS("absolute", "$1234"),
+	ABS_X("absolute, indexed by X", "$1234,X"),
+	ABS_Y("absolute, indexed by Y", "$1234,Y"),
+	ABS_IND("absolute, indirect", "($1234)"),
+	ABS_INDL("absolute, indirect long", "[$1234]"),
+	ABS_X_IND("absolute, indexed by X, indirect", "($1234,X)"),
+	DIR("direct page", "$12"),
+	DIR_X("direct page, indexed by X", "$12,X"),
+	DIR_Y("direct page, indexed by Y", "$12,Y"),
+	DIR_IND("direct page, indirect", "($12)"),
+	DIR_INDL("direct page, indirect long", "[$34]"),
+	DIR_IND_Y("direct page, indirect, indexed by Y", "($12),Y"),
+	DIR_INDL_Y("direct page, indirect long, indexed by Y", "[$12],Y"),
+	DIR_X_IND("direct page, indexed by X, indirect", "($12,X)"),
+	LONG("absolute long", "$123456"),
+	LONG_X("absolute long, indexed by X", "$123456,X"),
+	REL8("relative8", "label"),
+	REL16("relative16", "label"),
+	STK("stack", "$12,S"),
+	STK_IND_Y("stack, indirect, indexed by Y", "($12,S),Y"),
+	SRC_DEST("block move", "#$12,#$34"),
+}
+
+// Flag aliases (single uppercase letters matching their byte codes)
+def B = Flag.BREAK;
+def C = Flag.CARRY;
+def D = Flag.DECIMAL;
+def E = Flag.EMULATION;
+def I = Flag.INTERRUPT_DISABLE;
+def M = Flag.MEMORY_WIDTH;
+def N = Flag.NEGATIVE;
+def V = Flag.OVERFLOW;
+def X = Flag.INDEX_WIDTH;
+def Z = Flag.ZERO;
+def NOFLAGS: Flag.set = Flag.set.all - Flag.set.all;  // Empty flag set
+
+// AddrMode aliases (uppercase for consistency)
+def IMP = AddrMode.IMPLIED;
+def ACC = AddrMode.ACCUM;
+def IMM = AddrMode.IMM;
+def ABS = AddrMode.ABS;
+def ABS_X = AddrMode.ABS_X;
+def ABS_Y = AddrMode.ABS_Y;
+def ABS_IND = AddrMode.ABS_IND;
+def ABS_INDL = AddrMode.ABS_INDL;
+def ABS_X_IND = AddrMode.ABS_X_IND;
+def DIR = AddrMode.DIR;
+def DIR_X = AddrMode.DIR_X;
+def DIR_Y = AddrMode.DIR_Y;
+def DIR_IND = AddrMode.DIR_IND;
+def DIR_INDL = AddrMode.DIR_INDL;
+def DIR_IND_Y = AddrMode.DIR_IND_Y;
+def DIR_INDL_Y = AddrMode.DIR_INDL_Y;
+def DIR_X_IND = AddrMode.DIR_X_IND;
+def LONG = AddrMode.LONG;
+def LONG_X = AddrMode.LONG_X;
+def REL8 = AddrMode.REL8;
+def REL16 = AddrMode.REL16;
+def STK = AddrMode.STK;
+def STK_IND_Y = AddrMode.STK_IND_Y;
+def SRC_DEST = AddrMode.SRC_DEST;
+
+// Opcode aliases (uppercase)
+def ADC = Opcode.ADC;
+def SBC = Opcode.SBC;
+def CMP = Opcode.CMP;
+def CPX = Opcode.CPX;
+def CPY = Opcode.CPY;
+def DEC = Opcode.DEC;
+def DEX = Opcode.DEX;
+def DEY = Opcode.DEY;
+def INC = Opcode.INC;
+def INX = Opcode.INX;
+def INY = Opcode.INY;
+def AND = Opcode.AND;
+def EOR = Opcode.EOR;
+def ORA = Opcode.ORA;
+def BIT = Opcode.BIT;
+def TRB = Opcode.TRB;
+def TSB = Opcode.TSB;
+def ASL = Opcode.ASL;
+def LSR = Opcode.LSR;
+def ROL = Opcode.ROL;
+def ROR = Opcode.ROR;
+def BCC = Opcode.BCC;
+def BCS = Opcode.BCS;
+def BEQ = Opcode.BEQ;
+def BMI = Opcode.BMI;
+def BNE = Opcode.BNE;
+def BPL = Opcode.BPL;
+def BRA = Opcode.BRA;
+def BVC = Opcode.BVC;
+def BVS = Opcode.BVS;
+def BRL = Opcode.BRL;
+def JMP = Opcode.JMP;
+def JSL = Opcode.JSL;
+def JSR = Opcode.JSR;
+def RTL = Opcode.RTL;
+def RTS = Opcode.RTS;
+def BRK = Opcode.BRK;
+def COP = Opcode.COP;
+def RTI = Opcode.RTI;
+def CLC = Opcode.CLC;
+def CLD = Opcode.CLD;
+def CLI = Opcode.CLI;
+def CLV = Opcode.CLV;
+def SEC = Opcode.SEC;
+def SED = Opcode.SED;
+def SEI = Opcode.SEI;
+def REP = Opcode.REP;
+def SEP = Opcode.SEP;
+def LDA = Opcode.LDA;
+def LDX = Opcode.LDX;
+def LDY = Opcode.LDY;
+def STA = Opcode.STA;
+def STX = Opcode.STX;
+def STY = Opcode.STY;
+def STZ = Opcode.STZ;
+def MVN = Opcode.MVN;
+def MVP = Opcode.MVP;
+def NOP = Opcode.NOP;
+def WDM = Opcode.WDM;
+def PEA = Opcode.PEA;
+def PEI = Opcode.PEI;
+def PER = Opcode.PER;
+def PHA = Opcode.PHA;
+def PHX = Opcode.PHX;
+def PHY = Opcode.PHY;
+def PLA = Opcode.PLA;
+def PLX = Opcode.PLX;
+def PLY = Opcode.PLY;
+def PHB = Opcode.PHB;
+def PHD = Opcode.PHD;
+def PHK = Opcode.PHK;
+def PHP = Opcode.PHP;
+def PLB = Opcode.PLB;
+def PLD = Opcode.PLD;
+def PLP = Opcode.PLP;
+def STP = Opcode.STP;
+def WAI = Opcode.WAI;
+def TAX = Opcode.TAX;
+def TAY = Opcode.TAY;
+def TSX = Opcode.TSX;
+def TXA = Opcode.TXA;
+def TXS = Opcode.TXS;
+def TXY = Opcode.TXY;
+def TYA = Opcode.TYA;
+def TYX = Opcode.TYX;
+def TCD = Opcode.TCD;
+def TCS = Opcode.TCS;
+def TDC = Opcode.TDC;
+def TSC = Opcode.TSC;
+def XBA = Opcode.XBA;
+def XCE = Opcode.XCE;
+
+// Common addressing mode sets
+def DATA_MODES = IMM | DIR | DIR_X | ABS | ABS_X | ABS_Y | DIR_IND | DIR_IND_Y | DIR_X_IND |
+                 STK | STK_IND_Y | LONG | LONG_X | DIR_INDL | DIR_INDL_Y;
+
+// 65C816 Opcode Table Component
+component Wdc65C816 {
+	// Opcode decoder table: maps byte value to (Opcode, AddrMode)
+	def OPCODE_TABLE: Array<(Opcode, AddrMode)> = [
+		// 0x00-0x0F
+		(BRK, IMP),    (ORA, DIR_X_IND), (COP, IMP),    (ORA, STK),
+		(TSB, DIR),    (ORA, DIR),       (ASL, DIR),    (ORA, DIR_INDL),
+		(PHP, IMP),    (ORA, IMM),       (ASL, ACC),    (PHD, IMP),
+		(TSB, ABS),    (ORA, ABS),       (ASL, ABS),    (ORA, LONG),
+		// 0x10-0x1F
+		(BPL, REL8),   (ORA, DIR_IND_Y), (ORA, DIR_IND), (ORA, STK_IND_Y),
+		(TRB, DIR),    (ORA, DIR_X),     (ASL, DIR_X),  (ORA, DIR_INDL_Y),
+		(CLC, IMP),    (ORA, ABS_Y),     (INC, ACC),    (TCS, IMP),
+		(TRB, ABS),    (ORA, ABS_X),     (ASL, ABS_X),  (ORA, LONG_X),
+		// 0x20-0x2F
+		(JSR, ABS),    (AND, DIR_X_IND), (JSL, LONG),   (AND, STK),
+		(BIT, DIR),    (AND, DIR),       (ROL, DIR),    (AND, DIR_INDL),
+		(PLP, IMP),    (AND, IMM),       (ROL, ACC),    (PLD, IMP),
+		(BIT, ABS),    (AND, ABS),       (ROL, ABS),    (AND, LONG),
+		// 0x30-0x3F
+		(BMI, REL8),   (AND, DIR_IND_Y), (AND, DIR_IND), (AND, STK_IND_Y),
+		(BIT, DIR_X),  (AND, DIR_X),     (ROL, DIR_X),  (AND, DIR_INDL_Y),
+		(SEC, IMP),    (AND, ABS_Y),     (DEC, ACC),    (TSC, IMP),
+		(BIT, ABS_X),  (AND, ABS_X),     (ROL, ABS_X),  (AND, LONG_X),
+		// 0x40-0x4F
+		(RTI, IMP),    (EOR, DIR_X_IND), (WDM, IMM),    (EOR, STK),
+		(MVP, SRC_DEST), (EOR, DIR),     (LSR, DIR),    (EOR, DIR_INDL),
+		(PHA, IMP),    (EOR, IMM),       (LSR, ACC),    (PHK, IMP),
+		(JMP, ABS),    (EOR, ABS),       (LSR, ABS),    (EOR, LONG),
+		// 0x50-0x5F
+		(BVC, REL8),   (EOR, DIR_IND_Y), (EOR, DIR_IND), (EOR, STK_IND_Y),
+		(MVN, SRC_DEST), (EOR, DIR_X),   (LSR, DIR_X),  (EOR, DIR_INDL_Y),
+		(CLI, IMP),    (EOR, ABS_Y),     (PHY, IMP),    (TCD, IMP),
+		(JMP, LONG),   (EOR, ABS_X),     (LSR, ABS_X),  (EOR, LONG_X),
+		// 0x60-0x6F
+		(RTS, IMP),    (ADC, DIR_X_IND), (PER, REL16),  (ADC, STK),
+		(STZ, DIR),    (ADC, DIR),       (ROR, DIR),    (ADC, DIR_INDL),
+		(PLA, IMP),    (ADC, IMM),       (ROR, ACC),    (RTL, IMP),
+		(JMP, ABS_IND), (ADC, ABS),      (ROR, ABS),    (ADC, LONG),
+		// 0x70-0x7F
+		(BVS, REL8),   (ADC, DIR_IND_Y), (ADC, DIR_IND), (ADC, STK_IND_Y),
+		(STZ, DIR_X),  (ADC, DIR_X),     (ROR, DIR_X),  (ADC, DIR_INDL_Y),
+		(SEI, IMP),    (ADC, ABS_Y),     (PLY, IMP),    (TDC, IMP),
+		(JMP, ABS_X_IND), (ADC, ABS_X),  (ROR, ABS_X),  (ADC, LONG_X),
+		// 0x80-0x8F
+		(BRA, REL8),   (STA, DIR_X_IND), (BRL, REL16),  (STA, STK),
+		(STY, DIR),    (STA, DIR),       (STX, DIR),    (STA, DIR_INDL),
+		(DEY, IMP),    (BIT, IMM),       (TXA, IMP),    (PHB, IMP),
+		(STY, ABS),    (STA, ABS),       (STX, ABS),    (STA, LONG),
+		// 0x90-0x9F
+		(BCC, REL8),   (STA, DIR_IND_Y), (STA, DIR_IND), (STA, STK_IND_Y),
+		(STY, DIR_X),  (STA, DIR_X),     (STX, DIR_Y),  (STA, DIR_INDL_Y),
+		(TYA, IMP),    (STA, ABS_Y),     (TXS, IMP),    (TXY, IMP),
+		(STZ, ABS),    (STA, ABS_X),     (STZ, ABS_X),  (STA, LONG_X),
+		// 0xA0-0xAF
+		(LDY, IMM),    (LDA, DIR_X_IND), (LDX, IMM),    (LDA, STK),
+		(LDY, DIR),    (LDA, DIR),       (LDX, DIR),    (LDA, DIR_INDL),
+		(TAY, IMP),    (LDA, IMM),       (TAX, IMP),    (PLB, IMP),
+		(LDY, ABS),    (LDA, ABS),       (LDX, ABS),    (LDA, LONG),
+		// 0xB0-0xBF
+		(BCS, REL8),   (LDA, DIR_IND_Y), (LDA, DIR_IND), (LDA, STK_IND_Y),
+		(LDY, DIR_X),  (LDA, DIR_X),     (LDX, DIR_Y),  (LDA, DIR_INDL_Y),
+		(CLV, IMP),    (LDA, ABS_Y),     (TSX, IMP),    (TYX, IMP),
+		(LDY, ABS_X),  (LDA, ABS_X),     (LDX, ABS_Y),  (LDA, LONG_X),
+		// 0xC0-0xCF
+		(CPY, IMM),    (CMP, DIR_X_IND), (REP, IMM),    (CMP, STK),
+		(CPY, DIR),    (CMP, DIR),       (DEC, DIR),    (CMP, DIR_INDL),
+		(INY, IMP),    (CMP, IMM),       (DEX, IMP),    (WAI, IMP),
+		(CPY, ABS),    (CMP, ABS),       (DEC, ABS),    (CMP, LONG),
+		// 0xD0-0xDF
+		(BNE, REL8),   (CMP, DIR_IND_Y), (CMP, DIR_IND), (CMP, STK_IND_Y),
+		(PEI, DIR_IND), (CMP, DIR_X),    (DEC, DIR_X),  (CMP, DIR_INDL_Y),
+		(CLD, IMP),    (CMP, ABS_Y),     (PHX, IMP),    (STP, IMP),
+		(JMP, ABS_INDL), (CMP, ABS_X),   (DEC, ABS_X),  (CMP, LONG_X),
+		// 0xE0-0xEF
+		(CPX, IMM),    (SBC, DIR_X_IND), (SEP, IMM),    (SBC, STK),
+		(CPX, DIR),    (SBC, DIR),       (INC, DIR),    (SBC, DIR_INDL),
+		(INX, IMP),    (SBC, IMM),       (NOP, IMP),    (XBA, IMP),
+		(CPX, ABS),    (SBC, ABS),       (INC, ABS),    (SBC, LONG),
+		// 0xF0-0xFF
+		(BEQ, REL8),   (SBC, DIR_IND_Y), (SBC, DIR_IND), (SBC, STK_IND_Y),
+		(PEA, ABS),    (SBC, DIR_X),     (INC, DIR_X),  (SBC, DIR_INDL_Y),
+		(SED, IMP),    (SBC, ABS_Y),     (PLX, IMP),    (XCE, IMP),
+		(JSR, ABS_X_IND), (SBC, ABS_X),  (INC, ABS_X),  (SBC, LONG_X)
+	];
+}

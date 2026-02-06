@@ -1,0 +1,1128 @@
+// 65C816 Interpreter/Emulator
+// Executes 65C816 machine code instructions
+
+/* TODO
+ * - emulate BCD
+ * - emulate e=1
+ * - start execution correctly
+ * - check/fix MVN, MVP
+ */
+
+class Cpu65816 {
+	// Registers
+	var A: u16;      // Accumulator (16-bit, but can operate as 8-bit)
+	var X: u16;      // X index register
+	var Y: u16;      // Y index register
+	var SP: u16;     // Stack pointer
+	var PC: u16;     // Program counter
+	var DBR: u8;     // Data bank register
+	var PBR: u8;     // Program bank register
+	var D: u16;      // Direct page register
+
+	// Status flags
+	var n: bool;     // Negative
+	var v: bool;     // Overflow
+	var m: bool;     // Memory/Accumulator width (0=16-bit, 1=8-bit)
+	var x: bool;     // Index register width (0=16-bit, 1=8-bit)
+	var d: bool;     // Decimal mode
+	var i: bool;     // Interrupt disable
+	var z: bool;     // Zero
+	var c: bool;     // Carry
+	var e: bool;     // Emulation mode (6502 compatibility)
+
+	// Memory
+	var memory: Array<u8>;
+
+	new(memSize: int) {
+		memory = Array<u8>.new(memSize);
+		reset();
+	}
+
+	def reset() {
+		A = 0;
+		X = 0;
+		Y = 0;
+		SP = 0x01FF;
+		PC = 0;
+		DBR = 0;
+		PBR = 0;
+		D = 0;
+		n = false;
+		v = false;
+		m = true;
+		x = true;
+		d = false;
+		i = true;
+		z = false;
+		c = false;
+		e = true;
+	}
+
+	def readByte(bank: u8, addr: u16) -> u8 {
+		var fullAddr = (int.view(bank) << 16) | int.view(addr);
+		if (fullAddr < memory.length) return memory[fullAddr];
+		return 0;
+	}
+
+	def writeByte(bank: u8, addr: u16, value: u8) {
+		var fullAddr = (int.view(bank) << 16) | int.view(addr);
+		if (fullAddr < memory.length) memory[fullAddr] = value;
+	}
+
+	def readWord(bank: u8, addr: u16) -> u16 {
+		var lo = readByte(bank, addr);
+		var hi = readByte(bank, u16.view(addr + 1));
+		return u16.view(hi) << 8 | u16.view(lo);
+	}
+
+	def writeWord(bank: u8, addr: u16, value: u16) {
+		writeByte(bank, addr, u8.view(value & 0xFF));
+		writeByte(bank, u16.view(addr + 1), u8.view(value >> 8));
+	}
+
+	def getStatus() -> u8 {
+		var p: u8 = 0;
+		if (n) p |= 0x80;
+		if (v) p |= 0x40;
+		if (m) p |= 0x20;
+		if (x) p |= 0x10;
+		if (d) p |= 0x08;
+		if (i) p |= 0x04;
+		if (z) p |= 0x02;
+		if (c) p |= 0x01;
+		return p;
+	}
+
+	def setStatus(p: u8) {
+		n = (p & 0x80) != 0;
+		v = (p & 0x40) != 0;
+		m = (p & 0x20) != 0;
+		x = (p & 0x10) != 0;
+		d = (p & 0x08) != 0;
+		i = (p & 0x04) != 0;
+		z = (p & 0x02) != 0;
+		c = (p & 0x01) != 0;
+	}
+
+	def pushByte(value: u8) {
+		writeByte(0, SP, value);
+		SP = u16.view(SP - 1);
+		if (e) SP = u16.view(0x0100 | (SP & 0xFF));
+	}
+
+	def pullByte() -> u8 {
+		SP = u16.view(SP + 1);
+		if (e) SP = u16.view(0x0100 | (SP & 0xFF));
+		return readByte(0, SP);
+	}
+
+	def pushWord(value: u16) {
+		pushByte(u8.view(value >> 8));
+		pushByte(u8.view(value & 0xFF));
+	}
+
+	def pullWord() -> u16 {
+		var lo = pullByte();
+		var hi = pullByte();
+		return u16.view(hi) << 8 | u16.view(lo);
+	}
+
+	def updateNZ8(value: u8) {
+		n = (value & 0x80) != 0;
+		z = value == 0;
+	}
+
+	def updateNZ16(value: u16) {
+		n = (value & 0x8000) != 0;
+		z = value == 0;
+	}
+
+	def fetchByte() -> u8 {
+		var value = readByte(PBR, PC);
+		PC = u16.view(PC + 1);
+		return value;
+	}
+
+	def fetchWord() -> u16 {
+		var lo = fetchByte();
+		var hi = fetchByte();
+		return u16.view(hi) << 8 | u16.view(lo);
+	}
+
+	def getEffectiveAddress(mode: AddrMode) -> (u8, u16) {
+		match (mode) {
+			IMPLIED, ACCUM => return (0, 0);
+			IMM => return (PBR, PC);
+			ABS => {
+				var addr = fetchWord();
+				return (DBR, addr);
+			}
+			ABS_X => {
+				var addr = fetchWord();
+				return (DBR, u16.view(addr + X));
+			}
+			ABS_Y => {
+				var addr = fetchWord();
+				return (DBR, u16.view(addr + Y));
+			}
+			ABS_IND => {
+				var ptr = fetchWord();
+				var addr = readWord(0, ptr);
+				return (PBR, addr);
+			}
+			ABS_INDL => {
+				var ptr = fetchWord();
+				var addr = readWord(0, ptr);
+				var bank = readByte(0, u16.view(ptr + 2));
+				return (bank, addr);
+			}
+			ABS_X_IND => {
+				var ptr = fetchWord();
+				var addr = readWord(PBR, u16.view(ptr + X));
+				return (PBR, addr);
+			}
+			DIR => {
+				var offset = fetchByte();
+				return (0, u16.view(D + u16.view(offset)));
+			}
+			DIR_X => {
+				var offset = fetchByte();
+				return (0, u16.view(D + u16.view(offset) + X));
+			}
+			DIR_Y => {
+				var offset = fetchByte();
+				return (0, u16.view(D + u16.view(offset) + Y));
+			}
+			DIR_IND => {
+				var offset = fetchByte();
+				var ptr = u16.view(D + u16.view(offset));
+				var addr = readWord(0, ptr);
+				return (DBR, addr);
+			}
+			DIR_INDL => {
+				var offset = fetchByte();
+				var ptr = u16.view(D + u16.view(offset));
+				var addr = readWord(0, ptr);
+				var bank = readByte(0, u16.view(ptr + 2));
+				return (bank, addr);
+			}
+			DIR_IND_Y => {
+				var offset = fetchByte();
+				var ptr = u16.view(D + u16.view(offset));
+				var addr = readWord(0, ptr);
+				return (DBR, u16.view(addr + Y));
+			}
+			DIR_INDL_Y => {
+				var offset = fetchByte();
+				var ptr = u16.view(D + u16.view(offset));
+				var addr = readWord(0, ptr);
+				var bank = readByte(0, u16.view(ptr + 2));
+				return (bank, u16.view(addr + Y));
+			}
+			DIR_X_IND => {
+				var offset = fetchByte();
+				var ptr = u16.view(D + u16.view(offset) + X);
+				var addr = readWord(0, ptr);
+				return (DBR, addr);
+			}
+			LONG => {
+				var addr = fetchWord();
+				var bank = fetchByte();
+				return (bank, addr);
+			}
+			LONG_X => {
+				var addr = fetchWord();
+				var bank = fetchByte();
+				return (bank, u16.view(addr + X));
+			}
+			STK => {
+				var offset = fetchByte();
+				return (0, u16.view(SP + u16.view(offset)));
+			}
+			STK_IND_Y => {
+				var offset = fetchByte();
+				var ptr = u16.view(SP + u16.view(offset));
+				var addr = readWord(0, ptr);
+				return (DBR, u16.view(addr + Y));
+			}
+			REL8 => {
+				var offset = i8.view(fetchByte());
+				return (PBR, u16.view(i16.view(PC) + i16.view(offset)));
+			}
+			REL16 => {
+				var offset = i16.view(fetchWord());
+				return (PBR, u16.view(i16.view(PC) + offset));
+			}
+			SRC_DEST => return (0, 0);
+		}
+	}
+
+	def step() {
+		var opcode = fetchByte();
+		var decoded = Wdc65C816.OPCODE_TABLE[opcode];
+		var op = decoded.0;
+		var mode = decoded.1;
+		execute(op, mode);
+	}
+
+	def execute(op: Opcode, mode: AddrMode) {
+		match (op) {
+			ADC => { execADC(mode); }
+			SBC => { execSBC(mode); }
+			AND => { execAND(mode); }
+			EOR => { execEOR(mode); }
+			ORA => { execORA(mode); }
+			CMP => { execCMP(mode); }
+			CPX => { execCPX(mode); }
+			CPY => { execCPY(mode); }
+			INC => { execINC(mode); }
+			INX => {
+				if (x) {
+					X = u16.view((X & 0xFF00) | u16.view((X + 1) & 0xFF));
+					updateNZ8(u8.view(X));
+				} else {
+					X = u16.view(X + 1);
+					updateNZ16(X);
+				}
+			}
+			INY => {
+				if (x) {
+					Y = u16.view((Y & 0xFF00) | u16.view((Y + 1) & 0xFF));
+					updateNZ8(u8.view(Y));
+				} else {
+					Y = u16.view(Y + 1);
+					updateNZ16(Y);
+				}
+			}
+			DEC => { execDEC(mode); }
+			DEX => {
+				if (x) {
+					X = u16.view((X & 0xFF00) | u16.view((X - 1) & 0xFF));
+					updateNZ8(u8.view(X));
+				} else {
+					X = u16.view(X - 1);
+					updateNZ16(X);
+				}
+			}
+			DEY => {
+				if (x) {
+					Y = u16.view((Y & 0xFF00) | u16.view((Y - 1) & 0xFF));
+					updateNZ8(u8.view(Y));
+				} else {
+					Y = u16.view(Y - 1);
+					updateNZ16(Y);
+				}
+			}
+			ASL => { execASL(mode); }
+			LSR => { execLSR(mode); }
+			ROL => { execROL(mode); }
+			ROR => { execROR(mode); }
+			BIT => { execBIT(mode); }
+			TRB => { execTRB(mode); }
+			TSB => { execTSB(mode); }
+			BCC => { if (!c) branch(mode); }
+			BCS => { if (c) branch(mode); }
+			BEQ => { if (z) branch(mode); }
+			BMI => { if (n) branch(mode); }
+			BNE => { if (!z) branch(mode); }
+			BPL => { if (!n) branch(mode); }
+			BRA => { branch(mode); }
+			BVC => { if (!v) branch(mode); }
+			BVS => { if (v) branch(mode); }
+			BRL => { branchLong(mode); }
+			JMP => { execJMP(mode); }
+			JSR => { execJSR(mode); }
+			JSL => { execJSL(mode); }
+			RTS => { execRTS(); }
+			RTL => { execRTL(); }
+			RTI => { execRTI(); }
+			LDA => { execLDA(mode); }
+			LDX => { execLDX(mode); }
+			LDY => { execLDY(mode); }
+			STA => { execSTA(mode); }
+			STX => { execSTX(mode); }
+			STY => { execSTY(mode); }
+			STZ => { execSTZ(mode); }
+			TAX => {
+				X = A;
+				if (x) updateNZ8(u8.view(X));
+				else updateNZ16(X);
+			}
+			TAY => {
+				Y = A;
+				if (x) updateNZ8(u8.view(Y));
+				else updateNZ16(Y);
+			}
+			TXA => {
+				if (m) {
+					A = u16.view((A & 0xFF00) | (X & 0xFF));
+					updateNZ8(u8.view(A));
+				} else {
+					A = X;
+					updateNZ16(A);
+				}
+			}
+			TYA => {
+				if (m) {
+					A = u16.view((A & 0xFF00) | (Y & 0xFF));
+					updateNZ8(u8.view(A));
+				} else {
+					A = Y;
+					updateNZ16(A);
+				}
+			}
+			TSX => {
+				X = SP;
+				if (x) updateNZ8(u8.view(X));
+				else updateNZ16(X);
+			}
+			TXS => {
+				SP = X;
+			}
+			TXY => {
+				Y = X;
+				if (x) updateNZ8(u8.view(Y));
+				else updateNZ16(Y);
+			}
+			TYX => {
+				X = Y;
+				if (x) updateNZ8(u8.view(X));
+				else updateNZ16(X);
+			}
+			TCD => {
+				D = A;
+				updateNZ16(D);
+			}
+			TCS => {
+				SP = A;
+			}
+			TDC => {
+				A = D;
+				updateNZ16(A);
+			}
+			TSC => {
+				A = SP;
+				updateNZ16(A);
+			}
+			PHA => {
+				if (m) pushByte(u8.view(A));
+				else pushWord(A);
+			}
+			PHX => {
+				if (x) pushByte(u8.view(X));
+				else pushWord(X);
+			}
+			PHY => {
+				if (x) pushByte(u8.view(Y));
+				else pushWord(Y);
+			}
+			PLA => {
+				if (m) {
+					A = u16.view((A & 0xFF00) | u16.view(pullByte()));
+					updateNZ8(u8.view(A));
+				} else {
+					A = pullWord();
+					updateNZ16(A);
+				}
+			}
+			PLX => {
+				if (x) {
+					X = u16.view((X & 0xFF00) | u16.view(pullByte()));
+					updateNZ8(u8.view(X));
+				} else {
+					X = pullWord();
+					updateNZ16(X);
+				}
+			}
+			PLY => {
+				if (x) {
+					Y = u16.view((Y & 0xFF00) | u16.view(pullByte()));
+					updateNZ8(u8.view(Y));
+				} else {
+					Y = pullWord();
+					updateNZ16(Y);
+				}
+			}
+			PHP => {
+				pushByte(getStatus());
+			}
+			PLP => {
+				setStatus(pullByte());
+			}
+			PHB => {
+				pushByte(DBR);
+			}
+			PHD => {
+				pushWord(D);
+			}
+			PHK => {
+				pushByte(PBR);
+			}
+			PLB => {
+				DBR = pullByte();
+				updateNZ8(DBR);
+			}
+			PLD => {
+				D = pullWord();
+				updateNZ16(D);
+			}
+			CLC => {
+				c = false;
+			}
+			CLD => {
+				d = false;
+			}
+			CLI => {
+				i = false;
+			}
+			CLV => {
+				v = false;
+			}
+			SEC => {
+				c = true;
+			}
+			SED => {
+				d = true;
+			}
+			SEI => {
+				i = true;
+			}
+			REP => { execREP(mode); }
+			SEP => { execSEP(mode); }
+			XBA => {
+				var temp = u8.view(A >> 8);
+				A = (A << 8) | u16.view(temp);
+				updateNZ8(u8.view(A));
+			}
+			XCE => {
+				var temp = c;
+				c = e;
+				e = temp;
+			}
+			MVN => { execMVN(mode); }
+			MVP => { execMVP(mode); }
+			PEA => { execPEA(mode); }
+			PEI => { execPEI(mode); }
+			PER => { execPER(mode); }
+			BRK => { execBRK(mode); }
+			COP => { execCOP(mode); }
+			NOP => { }
+			WDM => { fetchByte(); }
+			STP => { }
+			WAI => { }
+		}
+	}
+
+	def execADC(mode: AddrMode) {
+		var value: u16;
+		if (mode == AddrMode.IMM) {
+			if (m) {
+				value = u16.view(fetchByte());
+			} else {
+				value = fetchWord();
+			}
+		} else {
+			var effective = getEffectiveAddress(mode);
+			var bank = effective.0;
+			var addr = effective.1;
+			if (m) {
+				value = u16.view(readByte(bank, addr));
+			} else {
+				value = readWord(bank, addr);
+			}
+		}
+		if (m) {
+			var carry: u9 = if(c, 1, 0);
+			var result = u9.view(A & 0xFF) + u9.view(value) + carry;
+			c = result > 0xFF;
+			v = ((A ^ u16.view(result)) & (value ^ u16.view(result)) & 0x80) != 0;
+			A = u16.view((A & 0xFF00) | u16.view(result & 0xFF));
+			updateNZ8(u8.view(A));
+		} else {
+			var carry: u17 = if(c, 1, 0);
+			var result = u17.view(A) + u17.view(value) + carry;
+			c = result > 0xFFFF;
+			v = ((A ^ u16.view(result)) & (value ^ u16.view(result)) & 0x8000) != 0;
+			A = u16.view(result & 0xFFFF);
+			updateNZ16(A);
+		}
+	}
+
+	def execSBC(mode: AddrMode) {
+		var value: u16;
+		if (mode == AddrMode.IMM) {
+			if (m) {
+				value = u16.view(fetchByte());
+			} else {
+				value = fetchWord();
+			}
+		} else {
+			var effective = getEffectiveAddress(mode);
+			var bank = effective.0;
+			var addr = effective.1;
+			if (m) {
+				value = u16.view(readByte(bank, addr));
+			} else {
+				value = readWord(bank, addr);
+			}
+		}
+		if (m) {
+			var borrow: i9 = if(c, 0, 1);
+			var result = i9.view(A & 0xFF) - i9.view(value) - borrow;
+			c = result >= 0;
+			v = ((A ^ value) & (A ^ u16.view(result)) & 0x80) != 0;
+			A = u16.view((A & 0xFF00) | u16.view(result & 0xFF));
+			updateNZ8(u8.view(A));
+		} else {
+			var borrow: i17 = if(c, 0, 1);
+			var result = i17.view(A) - i17.view(value) - borrow;
+			c = result >= 0;
+			v = ((A ^ value) & (A ^ u16.view(result)) & 0x8000) != 0;
+			A = u16.view(result & 0xFFFF);
+			updateNZ16(A);
+		}
+	}
+
+	def execAND(mode: AddrMode) {
+		var effective = getEffectiveAddress(mode);
+		var bank = effective.0;
+		var addr = effective.1;
+		if (m) {
+			A = u16.view((A & 0xFF00) | ((A & 0xFF) & u16.view(readByte(bank, addr))));
+			updateNZ8(u8.view(A));
+		} else {
+			A = A & readWord(bank, addr);
+			if (mode == AddrMode.IMM) PC = u16.view(PC + 1);
+			updateNZ16(A);
+		}
+	}
+
+	def execEOR(mode: AddrMode) {
+		var effective = getEffectiveAddress(mode);
+		var bank = effective.0;
+		var addr = effective.1;
+		if (m) {
+			A = A ^ u16.view(readByte(bank, addr));
+			updateNZ8(u8.view(A));
+		} else {
+			A = A ^ readWord(bank, addr);
+			if (mode == AddrMode.IMM) PC = u16.view(PC + 1);
+			updateNZ16(A);
+		}
+	}
+
+	def execORA(mode: AddrMode) {
+		var effective = getEffectiveAddress(mode);
+		var bank = effective.0;
+		var addr = effective.1;
+		if (m) {
+			A = A | u16.view(readByte(bank, addr));
+			updateNZ8(u8.view(A));
+		} else {
+			A = A | readWord(bank, addr);
+			if (mode == AddrMode.IMM) PC = u16.view(PC + 1);
+			updateNZ16(A);
+		}
+	}
+
+	def execCMP(mode: AddrMode) {
+		var effective = getEffectiveAddress(mode);
+		var bank = effective.0;
+		var addr = effective.1;
+		if (m) {
+			var value = u16.view(readByte(bank, addr));
+			var result = i9.view(A & 0xFF) - i9.view(value);
+			c = result >= 0;
+			updateNZ8(u8.view(result & 0xFF));
+		} else {
+			var value = readWord(bank, addr);
+			if (mode == AddrMode.IMM) PC = u16.view(PC + 1);
+			var result = i17.view(A) - i17.view(value);
+			c = result >= 0;
+			updateNZ16(u16.view(result & 0xFFFF));
+		}
+	}
+
+	def execCPX(mode: AddrMode) {
+		var effective = getEffectiveAddress(mode);
+		var bank = effective.0;
+		var addr = effective.1;
+		if (x) {
+			var value = u16.view(readByte(bank, addr));
+			var result = i9.view(X & 0xFF) - i9.view(value);
+			c = result >= 0;
+			updateNZ8(u8.view(result & 0xFF));
+		} else {
+			var value = readWord(bank, addr);
+			if (mode == AddrMode.IMM) PC = u16.view(PC + 1);
+			var result = i17.view(X) - i17.view(value);
+			c = result >= 0;
+			updateNZ16(u16.view(result & 0xFFFF));
+		}
+	}
+
+	def execCPY(mode: AddrMode) {
+		var effective = getEffectiveAddress(mode);
+		var bank = effective.0;
+		var addr = effective.1;
+		if (x) {
+			var value = u16.view(readByte(bank, addr));
+			var result = i9.view(Y & 0xFF) - i9.view(value);
+			c = result >= 0;
+			updateNZ8(u8.view(result & 0xFF));
+		} else {
+			var value = readWord(bank, addr);
+			if (mode == AddrMode.IMM) PC = u16.view(PC + 1);
+			var result = i17.view(Y) - i17.view(value);
+			c = result >= 0;
+			updateNZ16(u16.view(result & 0xFFFF));
+		}
+	}
+
+	def execINC(mode: AddrMode) {
+		if (mode == AddrMode.ACCUM) {
+			if (m) {
+				A = u16.view((A & 0xFF00) | u16.view((A + 1) & 0xFF));
+				updateNZ8(u8.view(A));
+			} else {
+				A = u16.view(A + 1);
+				updateNZ16(A);
+			}
+		} else {
+			var effective = getEffectiveAddress(mode);
+			var bank = effective.0;
+			var addr = effective.1;
+			var value = readByte(bank, addr);
+			value = u8.view(value + 1);
+			writeByte(bank, addr, value);
+			updateNZ8(value);
+		}
+	}
+
+	def execDEC(mode: AddrMode) {
+		if (mode == AddrMode.ACCUM) {
+			if (m) {
+				A = u16.view((A & 0xFF00) | u16.view((A - 1) & 0xFF));
+				updateNZ8(u8.view(A));
+			} else {
+				A = u16.view(A - 1);
+				updateNZ16(A);
+			}
+		} else {
+			var effective = getEffectiveAddress(mode);
+			var bank = effective.0;
+			var addr = effective.1;
+			var value = readByte(bank, addr);
+			value = u8.view(value - 1);
+			writeByte(bank, addr, value);
+			updateNZ8(value);
+		}
+	}
+
+	def execASL(mode: AddrMode) {
+		if (mode == AddrMode.ACCUM) {
+			if (m) {
+				c = (A & 0x80) != 0;
+				A = u16.view((A & 0xFF00) | u16.view((A << 1) & 0xFF));
+				updateNZ8(u8.view(A));
+			} else {
+				c = (A & 0x8000) != 0;
+				A = A << 1;
+				updateNZ16(A);
+			}
+		} else {
+			var effective = getEffectiveAddress(mode);
+			var bank = effective.0;
+			var addr = effective.1;
+			var value = readByte(bank, addr);
+			c = (value & 0x80) != 0;
+			value = u8.view(value << 1);
+			writeByte(bank, addr, value);
+			updateNZ8(value);
+		}
+	}
+
+	def execLSR(mode: AddrMode) {
+		if (mode == AddrMode.ACCUM) {
+			if (m) {
+				c = (A & 0x01) != 0;
+				A = u16.view((A & 0xFF00) | u16.view((A >> 1) & 0x7F));
+				updateNZ8(u8.view(A));
+			} else{
+				c = (A & 0x0001) != 0;
+				A = A >> 1;
+				updateNZ16(A);
+			}
+		} else {
+			var effective = getEffectiveAddress(mode);
+			var bank = effective.0;
+			var addr = effective.1;
+			var value = readByte(bank, addr);
+			c = (value & 0x01) != 0;
+			value = u8.view(value >> 1);
+			writeByte(bank, addr, value);
+			updateNZ8(value);
+		}
+	}
+
+	def execROL(mode: AddrMode) {
+		if (mode == AddrMode.ACCUM) {
+			if (m) {
+				var newCarry = (A & 0x80) != 0;
+				A = u16.view((A & 0xFF00) | u16.view(((A << 1) | if(c, 1, 0)) & 0xFF));
+				c = newCarry;
+				updateNZ8(u8.view(A));
+			} else {
+				var newCarry = (A & 0x8000) != 0;
+				A = u16.view((A << 1) | if(c, 1, 0));
+				c = newCarry;
+				updateNZ16(A);
+			}
+		} else {
+			var effective = getEffectiveAddress(mode);
+			var bank = effective.0;
+			var addr = effective.1;
+			var value = readByte(bank, addr);
+			var newCarry = (value & 0x80) != 0;
+			value = u8.view((value << 1) | if(c, 1, 0));
+			c = newCarry;
+			writeByte(bank, addr, value);
+			updateNZ8(value);
+		}
+	}
+
+	def execROR(mode: AddrMode) {
+		if (mode == AddrMode.ACCUM) {
+			if (m) {
+				var newCarry = (A & 0x01) != 0;
+				A = u16.view((A & 0xFF00) | u16.view(((A >> 1) | if(c, 0x80, 0)) & 0xFF));
+				c = newCarry;
+				updateNZ8(u8.view(A));
+			} else {
+				var newCarry = (A & 0x0001) != 0;
+				A = u16.view((A >> 1) | if(c, 0x8000, 0));
+				c = newCarry;
+				updateNZ16(A);
+			}
+		} else {
+			var effective = getEffectiveAddress(mode);
+			var bank = effective.0;
+			var addr = effective.1;
+			var value = readByte(bank, addr);
+			var newCarry = (value & 0x01) != 0;
+			value = u8.view((value >> 1) | if(c, 0x80, 0));
+			c = newCarry;
+			writeByte(bank, addr, value);
+			updateNZ8(value);
+		}
+	}
+
+	def execBIT(mode: AddrMode) {
+		var effective = getEffectiveAddress(mode);
+		var bank = effective.0;
+		var addr = effective.1;
+		if (m) {
+			var value = readByte(bank, addr);
+			if (mode != AddrMode.IMM) {
+				n = (value & 0x80) != 0;
+				v = (value & 0x40) != 0;
+			}
+			z = (A & u16.view(value)) == 0;
+		} else {
+			var value = readWord(bank, addr);
+			if (mode == AddrMode.IMM) PC = u16.view(PC + 1);
+			if (mode != AddrMode.IMM) {
+				n = (value & 0x8000) != 0;
+				v = (value & 0x4000) != 0;
+			}
+			z = (A & value) == 0;
+		}
+	}
+
+	def execTRB(mode: AddrMode) {
+		var effective = getEffectiveAddress(mode);
+		var bank = effective.0;
+		var addr = effective.1;
+		if (m) {
+			var value = readByte(bank, addr);
+			z = (A & u16.view(value)) == 0;
+			writeByte(bank, addr, u8.view(value & ~u8.view(A)));
+		} else {
+			var value = readWord(bank, addr);
+			z = (A & value) == 0;
+			writeWord(bank, addr, u16.view(value & ~A));
+		}
+	}
+
+	def execTSB(mode: AddrMode) {
+		var effective = getEffectiveAddress(mode);
+		var bank = effective.0;
+		var addr = effective.1;
+		if (m) {
+			var value = readByte(bank, addr);
+			z = (A & u16.view(value)) == 0;
+			writeByte(bank, addr, u8.view(value | u8.view(A)));
+		} else {
+			var value = readWord(bank, addr);
+			z = (A & value) == 0;
+			writeWord(bank, addr, u16.view(value | A));
+		}
+	}
+
+	def branch(mode: AddrMode) {
+		var effective = getEffectiveAddress(mode);
+		var target = effective.1;
+		PC = target;
+	}
+
+	def branchLong(mode: AddrMode) {
+		var effective = getEffectiveAddress(mode);
+		var target = effective.1;
+		PC = target;
+	}
+
+	def execJMP(mode: AddrMode) {
+		if (mode == AddrMode.ABS) {
+			PC = fetchWord();
+		} else if (mode == AddrMode.ABS_IND) {
+			var ptr = fetchWord();
+			PC = readWord(0, ptr);
+		} else if (mode == AddrMode.ABS_INDL) {
+			var ptr = fetchWord();
+			PC = readWord(0, ptr);
+			PBR = readByte(0, u16.view(ptr + 2));
+		} else if (mode == AddrMode.ABS_X_IND) {
+			var ptr = fetchWord();
+			PC = readWord(PBR, u16.view(ptr + X));
+		} else if (mode == AddrMode.LONG) {
+			PC = fetchWord();
+			PBR = fetchByte();
+		}
+	}
+
+	def execJSR(mode: AddrMode) {
+		if (mode == AddrMode.ABS) {
+			var target = fetchWord();
+			pushWord(u16.view(PC - 1));
+			PC = target;
+		} else if (mode == AddrMode.ABS_X_IND) {
+			var ptr = fetchWord();
+			pushWord(u16.view(PC - 1));
+			PC = readWord(PBR, u16.view(ptr + X));
+		}
+	}
+
+	def execJSL(mode: AddrMode) {
+		var target = fetchWord();
+		var bank = fetchByte();
+		pushByte(PBR);
+		pushWord(u16.view(PC - 1));
+		PC = target;
+		PBR = bank;
+	}
+
+	def execRTS() {
+		PC = u16.view(pullWord() + 1);
+	}
+
+	def execRTL() {
+		PC = u16.view(pullWord() + 1);
+		PBR = pullByte();
+	}
+
+	def execRTI() {
+		setStatus(pullByte());
+		PC = pullWord();
+		if (!e) PBR = pullByte();
+	}
+
+	def execLDA(mode: AddrMode) {
+		if (mode == AddrMode.IMM) {
+			if (m) {
+				A = u16.view((A & 0xFF00) | u16.view(fetchByte()));
+				updateNZ8(u8.view(A));
+			} else {
+				A = fetchWord();
+				updateNZ16(A);
+			}
+		} else {
+			var effective = getEffectiveAddress(mode);
+			var bank = effective.0;
+			var addr = effective.1;
+			if (m) {
+				A = u16.view((A & 0xFF00) | u16.view(readByte(bank, addr)));
+				updateNZ8(u8.view(A));
+			} else {
+				A = readWord(bank, addr);
+				updateNZ16(A);
+			}
+		}
+	}
+
+	def execLDX(mode: AddrMode) {
+		if (mode == AddrMode.IMM) {
+			if (x) {
+				X = u16.view((X & 0xFF00) | u16.view(fetchByte()));
+				updateNZ8(u8.view(X));
+			} else {
+				X = fetchWord();
+				updateNZ16(X);
+			}
+		} else {
+			var effective = getEffectiveAddress(mode);
+			var bank = effective.0;
+			var addr = effective.1;
+			if (x) {
+				X = u16.view((X & 0xFF00) | u16.view(readByte(bank, addr)));
+				updateNZ8(u8.view(X));
+			} else {
+				X = readWord(bank, addr);
+				updateNZ16(X);
+			}
+		}
+	}
+
+	def execLDY(mode: AddrMode) {
+		var effective = getEffectiveAddress(mode);
+		var bank = effective.0;
+		var addr = effective.1;
+		if (x) {
+			Y = u16.view((Y & 0xFF00) | u16.view(readByte(bank, addr)));
+			updateNZ8(u8.view(Y));
+		} else {
+			Y = readWord(bank, addr);
+			if (mode == AddrMode.IMM) PC = u16.view(PC + 1);
+			updateNZ16(Y);
+		}
+	}
+
+	def execSTA(mode: AddrMode) {
+		var effective = getEffectiveAddress(mode);
+		var bank = effective.0;
+		var addr = effective.1;
+		if (m) {
+			writeByte(bank, addr, u8.view(A));
+		} else {
+			writeWord(bank, addr, A);
+		}
+	}
+
+	def execSTX(mode: AddrMode) {
+		var effective = getEffectiveAddress(mode);
+		var bank = effective.0;
+		var addr = effective.1;
+		if (x) {
+			writeByte(bank, addr, u8.view(X));
+		} else {
+			writeWord(bank, addr, X);
+		}
+	}
+
+	def execSTY(mode: AddrMode) {
+		var effective = getEffectiveAddress(mode);
+		var bank = effective.0;
+		var addr = effective.1;
+		if (x) {
+			writeByte(bank, addr, u8.view(Y));
+		} else {
+			writeWord(bank, addr, Y);
+		}
+	}
+
+	def execSTZ(mode: AddrMode) {
+		var effective = getEffectiveAddress(mode);
+		var bank = effective.0;
+		var addr = effective.1;
+		if (m) {
+			writeByte(bank, addr, 0);
+		} else {
+			writeWord(bank, addr, 0);
+		}
+	}
+
+	def execREP(mode: AddrMode) {
+		var mask = fetchByte();
+		var status = getStatus();
+		setStatus(u8.view(status & ~mask));
+	}
+
+	def execSEP(mode: AddrMode) {
+		var mask = fetchByte();
+		var status = getStatus();
+		setStatus(u8.view(status | mask));
+	}
+
+	def execMVN(mode: AddrMode) {
+		var destBank = fetchByte();
+		var srcBank = fetchByte();
+		var value = readByte(srcBank, X);
+		writeByte(destBank, Y, value);
+		X = u16.view(X + 1);
+		Y = u16.view(Y + 1);
+		A = u16.view(A - 1);
+		if (A != 0xFFFF) {
+			PC = u16.view(PC - 3);
+		}
+	}
+
+	def execMVP(mode: AddrMode) {
+		var destBank = fetchByte();
+		var srcBank = fetchByte();
+		var value = readByte(srcBank, X);
+		writeByte(destBank, Y, value);
+		X = u16.view(X - 1);
+		Y = u16.view(Y - 1);
+		A = u16.view(A - 1);
+		if (A != 0xFFFF) {
+			PC = u16.view(PC - 3);
+		}
+	}
+
+	def execPEA(mode: AddrMode) {
+		var value = fetchWord();
+		pushWord(value);
+	}
+
+	def execPEI(mode: AddrMode) {
+		var offset = fetchByte();
+		var addr = u16.view(D + u16.view(offset));
+		var value = readWord(0, addr);
+		pushWord(value);
+	}
+
+	def execPER(mode: AddrMode) {
+		var offset = i16.view(fetchWord());
+		var value = u16.view(i16.view(PC) + offset);
+		pushWord(value);
+	}
+
+	def execBRK(mode: AddrMode) {
+		if (mode == AddrMode.IMM) fetchByte();
+		pushWord(u16.view(PC + 1));
+		pushByte(getStatus());
+		i = true;
+		d = false;
+		if (e) {
+			PC = readWord(0, 0xFFFE);
+		} else {
+			pushByte(PBR);
+			PBR = 0;
+			PC = readWord(0, 0xFFE6);
+		}
+	}
+
+	def execCOP(mode: AddrMode) {
+		if (mode == AddrMode.IMM) fetchByte();
+		pushWord(u16.view(PC + 1));
+		pushByte(getStatus());
+		i = true;
+		d = false;
+		if (e) {
+			PC = readWord(0, 0xFFF4);
+		} else {
+			pushByte(PBR);
+			PBR = 0;
+			PC = readWord(0, 0xFFE4);
+		}
+	}
+}

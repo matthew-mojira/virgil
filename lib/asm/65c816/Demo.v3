@@ -1,0 +1,160 @@
+// 65C816 Demo Program
+// Demonstrates the interpreter and disassembler
+
+component Demo {
+	def main() {
+		System.puts("=== 65C816 Interpreter and Disassembler Demo ===\n\n");
+
+		// Create a simple program:
+		// LDA #$42     ; Load $42 into accumulator
+		// STA $00      ; Store to direct page $00
+		// LDA $00      ; Load it back
+		// ADC #$10     ; Add $10
+		// STA $01      ; Store result to $01
+		// LDX #$05     ; Load X with $05
+		// INX          ; Increment X
+		// NOP          ; No operation
+		var program = [
+			0x18, 0xFB,   // CLC, XCE
+			0xA9, 0x42,  // LDA #$42
+			0x85, 0x00,    // STA $00
+			0xA5, 0x00,    // LDA $00
+			0x69, 0x10,    // ADC #$10
+			0x85, 0x01,    // STA $01
+			0xA2, 0x05,    // LDX #$05
+			0xE8,          // INX
+			0xEA           // NOP
+		];
+
+		// Initialize CPU
+		var cpu = Cpu65816.new(0x10000);
+		cpu.reset();
+		cpu.m = true;  // 8-bit accumulator
+		cpu.x = true;  // 8-bit index registers
+
+		// Load program into memory
+		for (i = 0; i < program.length; i++) {
+			cpu.memory[i] = u8.view(program[i]);
+		}
+
+		// Initialize disassembler
+		var disasm = Disassembler65816.new();
+		disasm.m = true;
+		disasm.x = true;
+
+		System.puts("Program listing:\n");
+		System.puts("----------------\n");
+		var addr = 0;
+		while (addr < program.length) {
+			var disassembled = disasm.disassemble(cpu.memory, addr);
+			var instr = disassembled.0;
+			var len = disassembled.1;
+			System.puts(instr);
+			System.puts("\n");
+			addr += len;
+		}
+
+		System.puts("\nExecution trace:\n");
+		System.puts("----------------\n");
+
+		// Execute program step by step
+		cpu.PC = 0;
+		var stepCount = 0;
+		var maxSteps = program.length; // Ensure we don't run forever
+
+		while (cpu.PC < program.length && stepCount < maxSteps) {
+			var startPC = cpu.PC;
+			var disassembled = disasm.disassemble(cpu.memory, int.view(startPC));
+			var instr = disassembled.0;
+
+			System.puts(instr);
+			System.puts("\n");
+
+			cpu.step();
+			stepCount++;
+		}
+
+		System.puts("\nFinal CPU state:\n");
+		System.puts("----------------\n");
+		System.puts(Strings.format1("A  = $%x\n", cpu.A));
+		System.puts(Strings.format1("X  = $%x\n", cpu.X));
+		System.puts(Strings.format1("Y  = $%x\n", cpu.Y));
+		System.puts(Strings.format1("SP = $%x\n", cpu.SP));
+		System.puts(Strings.format1("PC = $%x\n", cpu.PC));
+		System.puts("Final flags: ");
+		if (cpu.n) System.puts("N");
+		if (cpu.v) System.puts("V");
+		if (cpu.z) System.puts("Z");
+		if (cpu.c) System.puts("C");
+		System.puts("\n");
+
+		System.puts("\nMemory dump (Direct Page $00-$0F):\n");
+		System.puts("----------------------------------\n");
+		for (i = 0; i < 16; i++) {
+			if (i % 8 == 0) {
+				System.puts(Strings.format1("$%x: ", i));
+			}
+			System.puts(Strings.format1("%x ", cpu.memory[i]));
+			if (i % 8 == 7) System.puts("\n");
+		}
+
+		// Demonstrate more complex addressing modes
+		System.puts("\n=== Advanced Addressing Modes Demo ===\n\n");
+
+		var advancedProgram: Array<u8> = [
+			0xA9, 0x12, 0x34,
+			0xA1, 0x10,
+			0xB2, 0x20,
+			0xB7, 0x30,
+			0xAF, 0x00, 0x20, 0x01,
+			0x82, 0x05, 0x00,
+			0x22, 0x00, 0x80, 0x02
+		];
+
+		System.puts("Advanced instructions:\n");
+		System.puts("----------------------\n");
+		addr = 0;
+		while (addr < advancedProgram.length) {
+			var disassembled = disasm.disassemble(advancedProgram, addr);
+			var instr = disassembled.0;
+			var len = disassembled.1;
+			System.puts(Strings.format2("$%x: %s\n", addr, instr));
+			addr += len;
+		}
+
+		// Demonstrate opcode table lookup
+		System.puts("\n=== Opcode Table Lookup Demo ===\n\n");
+		System.puts("Opcode decoding is working via the disassembler!\n");
+
+		System.puts("\nDemo completed successfully!\n");
+	}
+
+	def formatAddrMode(mode: AddrMode) -> string {
+		match (mode) {
+			IMPLIED => return "IMPLIED";
+			ACCUM => return "ACCUM";
+			IMM => return "IMM";
+			ABS => return "ABS";
+			ABS_X => return "ABS_X";
+			ABS_Y => return "ABS_Y";
+			ABS_IND => return "ABS_IND";
+			ABS_INDL => return "ABS_INDL";
+			ABS_X_IND => return "ABS_X_IND";
+			DIR => return "DIR";
+			DIR_X => return "DIR_X";
+			DIR_Y => return "DIR_Y";
+			DIR_IND => return "DIR_IND";
+			DIR_INDL => return "DIR_INDL";
+			DIR_IND_Y => return "DIR_IND_Y";
+			DIR_INDL_Y => return "DIR_INDL_Y";
+			DIR_X_IND => return "DIR_X_IND";
+			LONG => return "LONG";
+			LONG_X => return "LONG_X";
+			REL8 => return "REL8";
+			REL16 => return "REL16";
+			STK => return "STK";
+			STK_IND_Y => return "STK_IND_Y";
+			SRC_DEST => return "SRC_DEST";
+		}
+	}
+}
