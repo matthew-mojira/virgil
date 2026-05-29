@@ -1,0 +1,224 @@
+var stack = Array<int>.new(256);
+var locals = Array<int>.new(256);
+var table = Array<Pointer>.new(256);
+
+def getLabel() -> Pointer {
+	return CiRuntime.callerIp();
+}
+
+def trace = false;
+
+// One of every opcode, with dummy immediates where needed, to drive the prepass.
+def INIT_PROGRAM: Array<byte> = [
+	Opcode.NOP.code,
+	Opcode.LOCAL_GET.code,
+	Opcode.LOCAL_SET.code,
+	Opcode.DROP.code,
+	Opcode.I32_CONST.code,
+	Opcode.I32_ADD.code,
+	Opcode.I32_SUB.code,
+	Opcode.I32_MUL.code,
+	Opcode.I32_EQ.code,
+	Opcode.I32_LT.code,
+	Opcode.I32_LTEQ.code,
+	Opcode.BR.code,
+	Opcode.BR_IF.code,
+	Opcode.BR_IFZ.code,
+	Opcode.DUP.code,
+	Opcode.UNREACHABLE.code
+];
+
+def run(program: Array<byte>, inputs: Array<int>) -> Result {
+	if (table[0] == Pointer.NULL) run(INIT_PROGRAM, [], true);
+	return run(program, inputs, false);
+}
+
+def run(program: Array<byte>, inputs: Array<int>, prepass: bool) -> Result {
+	var pc = 0u;
+	var sp = 0;
+	var nsp = CiRuntime.callerSp() + (0 - Pointer.SIZE);
+	for (i < inputs.length) locals[i] = inputs[i];
+	while (pc < program.length) {
+		if (trace) {
+			System.puti(int.view(pc));
+			var op = program[pc];
+			System.puts(": ");
+			System.puti(op);
+			System.puts(" =");
+			for (i < sp) {
+				System.putc(' ');
+				System.puti(stack[i]);
+			}
+			System.ln();
+		}
+		var op = program[pc++];
+		match (op) {
+			Opcode.UNREACHABLE.code => {
+				if (prepass) {
+					table[Opcode.UNREACHABLE.code] = getLabel();
+					return Result.Trap;
+				}
+				return Result.Trap;
+			}
+			Opcode.NOP.code => {
+				if (prepass) {
+					table[Opcode.NOP.code] = getLabel();
+					continue;
+				}
+				nsp.store<Pointer>(table[program[pc++]]);
+				CiRuntime.returnTo<void>(nsp, ());
+			}
+			Opcode.LOCAL_GET.code => {
+				if (prepass) {
+					table[Opcode.LOCAL_GET.code] = getLabel();
+					continue;
+				}
+				var index = program[pc++]; // TODO: LEB
+				stack[sp++] = locals[index];
+				nsp.store<Pointer>(table[program[pc++]]);
+				CiRuntime.returnTo<void>(nsp, ());
+			}
+			Opcode.LOCAL_SET.code => {
+				if (prepass) {
+					table[Opcode.LOCAL_SET.code] = getLabel();
+					continue;
+				}
+				var index = program[pc++]; // TODO: LEB
+				locals[index] = stack[sp++];
+				nsp.store<Pointer>(table[program[pc++]]);
+				CiRuntime.returnTo<void>(nsp, ());
+			}
+			Opcode.DROP.code => {
+				if (prepass) {
+					table[Opcode.DROP.code] = getLabel();
+					continue;
+				}
+				sp--;
+				nsp.store<Pointer>(table[program[pc++]]);
+				CiRuntime.returnTo<void>(nsp, ());
+			}
+			Opcode.I32_CONST.code => {
+				if (prepass) {
+					table[Opcode.I32_CONST.code] = getLabel();
+					continue;
+				}
+				var val = program[pc++];
+				stack[sp++] = val;
+				nsp.store<Pointer>(table[program[pc++]]);
+				CiRuntime.returnTo<void>(nsp, ());
+			}
+			Opcode.I32_ADD.code => {
+				if (prepass) {
+					table[Opcode.I32_ADD.code] = getLabel();
+					continue;
+				}
+				var y = stack[--sp];
+				var x = stack[--sp];
+				stack[sp++] = x + y;
+				nsp.store<Pointer>(table[program[pc++]]);
+				CiRuntime.returnTo<void>(nsp, ());
+			}
+			Opcode.I32_SUB.code => {
+				if (prepass) {
+					table[Opcode.I32_SUB.code] = getLabel();
+					continue;
+				}
+				var y = stack[--sp];
+				var x = stack[--sp];
+				stack[sp++] = x - y;
+				nsp.store<Pointer>(table[program[pc++]]);
+				CiRuntime.returnTo<void>(nsp, ());
+			}
+			Opcode.I32_MUL.code => {
+				if (prepass) {
+					table[Opcode.I32_MUL.code] = getLabel();
+					continue;
+				}
+				var y = stack[--sp];
+				var x = stack[--sp];
+				stack[sp++] = x * y;
+				nsp.store<Pointer>(table[program[pc++]]);
+				CiRuntime.returnTo<void>(nsp, ());
+			}
+			Opcode.I32_EQ.code => {
+				if (prepass) {
+					table[Opcode.I32_EQ.code] = getLabel();
+					continue;
+				}
+				var y = stack[--sp];
+				var x = stack[--sp];
+				stack[sp++] = if (x == y, 1, 0);
+				nsp.store<Pointer>(table[program[pc++]]);
+				CiRuntime.returnTo<void>(nsp, ());
+			}
+			Opcode.I32_LT.code => {
+				if (prepass) {
+					table[Opcode.I32_LT.code] = getLabel();
+					continue;
+				}
+				var y = stack[--sp];
+				var x = stack[--sp];
+				stack[sp++] = if (x < y, 1, 0);
+				nsp.store<Pointer>(table[program[pc++]]);
+				CiRuntime.returnTo<void>(nsp, ());
+			}
+			Opcode.I32_LTEQ.code => {
+				if (prepass) {
+					table[Opcode.I32_LTEQ.code] = getLabel();
+					continue;
+				}
+				var y = stack[--sp];
+				var x = stack[--sp];
+				stack[sp++] = if (x <= y, 1, 0);
+				nsp.store<Pointer>(table[program[pc++]]);
+				CiRuntime.returnTo<void>(nsp, ());
+			}
+			Opcode.BR.code => {
+				if (prepass) {
+					table[Opcode.BR.code] = getLabel();
+					continue;
+				}
+				var delta = u32.view(i8.view(program[pc++])); // TODO: LEB
+				pc += delta;
+				nsp.store<Pointer>(table[program[pc++]]);
+				CiRuntime.returnTo<void>(nsp, ());
+			}
+			Opcode.BR_IF.code => {
+				if (prepass) {
+					table[Opcode.BR_IF.code] = getLabel();
+					continue;
+				}
+				var delta = u32.view(i8.view(program[pc++])); // TODO: LEB
+				var x = stack[--sp];
+				if (x != 0) pc += delta;
+				nsp.store<Pointer>(table[program[pc++]]);
+				CiRuntime.returnTo<void>(nsp, ());
+			}
+			Opcode.BR_IFZ.code => {
+				if (prepass) {
+					table[Opcode.BR_IFZ.code] = getLabel();
+					continue;
+				}
+				var delta = u32.view(i8.view(program[pc++])); // TODO: LEB
+				var x = stack[--sp];
+				if (x == 0) pc += delta;
+				nsp.store<Pointer>(table[program[pc++]]);
+				CiRuntime.returnTo<void>(nsp, ());
+			}
+			Opcode.DUP.code => {
+				if (prepass) {
+					table[Opcode.DUP.code] = getLabel();
+					continue;
+				}
+				var val = stack[sp - 1];
+				stack[sp++] = val;
+				nsp.store<Pointer>(table[program[pc++]]);
+				CiRuntime.returnTo<void>(nsp, ());
+			}
+			_ => {
+				return Result.Trap;
+			}
+		}
+	}
+	return Result.Values(Ranges.dup(stack[0 ... sp]));
+}

@@ -1,0 +1,12 @@
+def GET = Opcode.LOCAL_GET.code;
+def ADD = Opcode.I32_ADD.code;
+
+def PROGRAM: Array<byte> = [
+	GET, 0,
+	GET, 1,
+	ADD
+];
+
+def main(args: Array<string>) -> int {
+	return Interp.runTest(PROGRAM, args);
+}

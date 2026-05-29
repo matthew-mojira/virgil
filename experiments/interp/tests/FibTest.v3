@@ -1,0 +1,51 @@
+// Computes fib(n). Input: locals[0]=n. Returns fib(n) where fib(0)=0, fib(1)=1.
+def GET = Opcode.LOCAL_GET.code;
+def SET = Opcode.LOCAL_SET.code;
+def CONST = Opcode.I32_CONST.code;
+def ADD = Opcode.I32_ADD.code;
+def SUB = Opcode.I32_SUB.code;
+def BR = Opcode.BR.code;
+def BR_IFZ = Opcode.BR_IFZ.code;
+
+def PROGRAM: Array<byte> = [
+//0
+	CONST, 0,
+//2
+	SET, 1,           // a = 0
+//4
+	CONST, 1,
+//6
+	SET, 2,           // b = 1
+//8  <-- loop top
+	GET, 0,           // push n
+//10
+	BR_IFZ, 20,       // if n==0, jump to 32 (GET 1)
+//12
+	GET, 2,           // push b
+//14
+	GET, 1,           // push a
+//16
+	GET, 2,           // push b
+//18
+	ADD,              // a+b
+//19
+	SET, 2,           // b = a+b
+//21
+	SET, 1,           // a = old b
+//23
+	GET, 0,           // push n
+//25
+	CONST, 1,
+//27
+	SUB,              // n-1
+//28
+	SET, 0,           // n--
+//30
+	BR, byte.view(-24), // back to 8
+//32
+	GET, 1            // push a (result)
+];
+
+def main(args: Array<string>) -> int {
+	return Interp.runTest(PROGRAM, args);
+}

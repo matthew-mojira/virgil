@@ -1,0 +1,43 @@
+// Computes base^exp. Inputs: locals[0]=base, locals[1]=exp
+def GET = Opcode.LOCAL_GET.code;
+def SET = Opcode.LOCAL_SET.code;
+def CONST = Opcode.I32_CONST.code;
+def MUL = Opcode.I32_MUL.code;
+def SUB = Opcode.I32_SUB.code;
+def BR = Opcode.BR.code;
+def BR_IFZ = Opcode.BR_IFZ.code;
+
+def PROGRAM: Array<byte> = [
+//0
+	CONST, 1,
+//2
+	SET, 2,           // acc = 1
+//4  <-- loop top
+	GET, 1,           // push exp
+//6
+	BR_IFZ, 16,       // if exp==0, jump to 24 (GET 2)
+//8
+	GET, 2,           // push acc
+//10
+	GET, 0,           // push base
+//12
+	MUL,              // acc*base
+//13
+	SET, 2,           // acc = acc*base
+//15
+	GET, 1,           // push exp
+//17
+	CONST, 1,
+//19
+	SUB,              // exp-1
+//20
+	SET, 1,           // exp--
+//22
+	BR, byte.view(-20), // back to 4
+//24
+	GET, 2            // push acc (result)
+];
+
+def main(args: Array<string>) -> int {
+	return Interp.runTest(PROGRAM, args);
+}

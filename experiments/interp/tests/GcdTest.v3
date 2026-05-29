@@ -1,0 +1,54 @@
+// Computes GCD(a, b) via subtraction. Inputs: locals[0]=a, locals[1]=b
+def GET = Opcode.LOCAL_GET.code;
+def SET = Opcode.LOCAL_SET.code;
+def SUB = Opcode.I32_SUB.code;
+def EQ = Opcode.I32_EQ.code;
+def LT = Opcode.I32_LT.code;
+def BR = Opcode.BR.code;
+def BR_IF = Opcode.BR_IF.code;
+def BR_IFZ = Opcode.BR_IFZ.code;
+
+def PROGRAM: Array<byte> = [
+//0   <-- loop top
+	GET, 0,           // push a
+//2
+	GET, 1,           // push b
+//4
+	EQ,               // a==b?
+//5
+	BR_IF, 25,        // if a==b, jump to 32 (GET 0)
+//7
+	GET, 0,           // push a
+//9
+	GET, 1,           // push b
+//11
+	LT,               // a < b?
+//12
+	BR_IFZ, 9,        // if not (a>=b), jump to 23 (a=a-b branch)
+//14
+	GET, 1,           // b > a: push b
+//16
+	GET, 0,           // push a
+//18
+	SUB,              // b-a
+//19
+	SET, 1,           // b = b-a
+//21
+	BR, byte.view(-23), // back to 0
+//23
+	GET, 0,           // a >= b: push a  <-- BR_IFZ target
+//25
+	GET, 1,           // push b
+//27
+	SUB,              // a-b
+//28
+	SET, 0,           // a = a-b
+//30
+	BR, byte.view(-32), // back to 0
+//32
+	GET, 0            // push a (result)  <-- BR_IF target
+];
+
+def main(args: Array<string>) -> int {
+	return Interp.runTest(PROGRAM, args);
+}

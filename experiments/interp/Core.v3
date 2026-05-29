@@ -1,0 +1,48 @@
+enum Opcode(code: byte, imm: Immediate) {
+	UNREACHABLE	(0x00, Immediate.NONE),
+	NOP		(0x01, Immediate.NONE),
+	LOCAL_GET	(0x02, Immediate.LEB),
+	LOCAL_SET	(0x03, Immediate.LEB),
+	DROP		(0x04, Immediate.NONE),
+	I32_CONST	(0x05, Immediate.LEB),
+	I32_ADD		(0x06, Immediate.NONE),
+	I32_SUB		(0x07, Immediate.NONE),
+	I32_MUL		(0x08, Immediate.NONE),
+	I32_EQ		(0x09, Immediate.NONE),
+	I32_LT		(0x0A, Immediate.NONE),
+	I32_LTEQ	(0x0B, Immediate.NONE),
+	BR		(0x0C, Immediate.LEB),
+	BR_IF		(0x0D, Immediate.LEB),
+	BR_IFZ		(0x0E, Immediate.LEB),
+	DUP		(0x0F, Immediate.NONE)
+}
+
+enum Immediate {
+	NONE,
+	LEB
+}
+
+type Result {
+	case Trap;
+	case Values(vals: Array<int>);
+}
+
+component Interp {
+	def runTest(program: Array<byte>, args: Array<string>) -> int {
+		var inputs = Array<int>.new(args.length);
+		for (i < args.length) inputs[i] = Ints.parseDecimal(args[i], 0).1;
+		match (run(program, inputs)) {
+			Trap => {
+				System.puts("!trap\n");
+				return 1;
+			}
+			Values(vals) => {
+				for (v in vals) {
+					System.puti(v);
+					System.ln();
+				}
+			}
+		}
+		return 0;
+	}
+}

@@ -1,0 +1,17 @@
+def GET = Opcode.LOCAL_GET.code;
+def I32_CONST = Opcode.I32_CONST.code;
+def I32_SUB = Opcode.I32_SUB.code;
+def DUP = Opcode.DUP.code;
+def BR_IF = Opcode.BR_IF.code;
+
+def PROGRAM: Array<byte> = [
+	GET, 0,
+	I32_CONST, 1,
+	I32_SUB,
+	DUP,
+	BR_IF, byte.view(-6)
+];
+
+def main(args: Array<string>) -> int {
+	return Interp.runTest(PROGRAM, args);
+}

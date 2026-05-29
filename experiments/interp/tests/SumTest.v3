@@ -1,0 +1,43 @@
+// Computes sum 1..n. Input: locals[0]=n
+def GET = Opcode.LOCAL_GET.code;
+def SET = Opcode.LOCAL_SET.code;
+def CONST = Opcode.I32_CONST.code;
+def ADD = Opcode.I32_ADD.code;
+def SUB = Opcode.I32_SUB.code;
+def BR = Opcode.BR.code;
+def BR_IFZ = Opcode.BR_IFZ.code;
+
+def PROGRAM: Array<byte> = [
+//0
+	CONST, 0,
+//2
+	SET, 1,           // acc = 0
+//4  <-- loop top
+	GET, 0,           // push n
+//6
+	BR_IFZ, 16,       // if n==0, jump to 24 (GET 1)
+//8
+	GET, 1,           // push acc
+//10
+	GET, 0,           // push n
+//12
+	ADD,              // acc+n
+//13
+	SET, 1,           // acc = acc+n
+//15
+	GET, 0,           // push n
+//17
+	CONST, 1,
+//19
+	SUB,              // n-1
+//20
+	SET, 0,           // n--
+//22
+	BR, byte.view(-20), // back to 4
+//24
+	GET, 1            // push acc (result)
+];
+
+def main(args: Array<string>) -> int {
+	return Interp.runTest(PROGRAM, args);
+}
