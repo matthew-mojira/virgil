@@ -665,7 +665,7 @@ class SsaJvmGen(jprog: JvmProgram, context: SsaContext, jsig: JvmSig, code: JvmC
 			}
 			KillRegisters => { // nop
 			}
-			ForceSpill => { // no physical spilling on JVM; the single argument is already the result
+			ForceSpill => { // nop
 			}
 		} else {
 			context.fail1("unexpected opcode in SSA->JVM: %s", op.opcode.name);

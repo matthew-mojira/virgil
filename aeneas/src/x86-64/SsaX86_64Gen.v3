@@ -435,14 +435,14 @@ class SsaX86_64Gen extends SsaMachGen {
 	def emitForceSpill(i: SsaApplyOp) {
 		if (numVars(i) != 1) return context.fail("CiTest.forceSpill only supports scalar (single-VReg) types");
 		var vreg = getVReg(i);        // fresh VReg for this node, distinct from getVReg(i.input0())
-		allocSpill(vreg);             // idempotent; sets vreg.spill to a concrete stack slot now
+		allocSpill(vreg);             // sets vreg.spill to a concrete stack slot now
 		vreg.mustSpill = true;        // consumed by GlobalRegAlloc.colorGraph()
 		var opcode: int;
 		match (vreg.regClass) {
 			I32 => opcode = I_MOVD  | (AM_OP_REG << AM_SHIFT);
 			F32 => opcode = I_MOVSS | (AM_OP_XMM << AM_SHIFT);
 			F64 => opcode = I_MOVSD | (AM_OP_XMM << AM_SHIFT);
-			_   => opcode = I_MOVQ  | (AM_OP_REG << AM_SHIFT); // I64, REF
+			I64, REF => opcode = I_MOVQ  | (AM_OP_REG << AM_SHIFT);
 		}
 		emit2(opcode, dfnFixed(i, vreg.spill), useReg(i.input0()));
 	}

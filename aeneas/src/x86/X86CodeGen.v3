@@ -248,7 +248,7 @@ class X86CodeGen extends OldCodeGen {
 				gen(".kill", asm_kill_registers, (i.source));
 				root = true;
 			}
-			ForceSpill => id(i, makeVar(i.input0())); // no forced-spill support on this legacy backend; identity only
+			ForceSpill => id(i, makeVar(i.input0()));
 			CallKernel(kernel) =>	root = genCallKernel(i, v, kernel);
 			ReturnTo =>		root = genReturnTo(i);
 		} else {

@@ -515,8 +515,7 @@ class GlobalRegAlloc(regSet: MachRegSet, codegen: SsaMachGen) {
 				}
 			}
 			var vreg = vars[nid];
-			var forcedSpill = vreg.mustSpill;
-			if (!forcedSpill) {
+			if (!vreg.mustSpill) {
 				if (vreg.hint != 0 && !allocatedColor[vreg.hint]) { // try hint first
 					coloring[nid] = vreg.hint;
 					continue;
@@ -532,13 +531,8 @@ class GlobalRegAlloc(regSet: MachRegSet, codegen: SsaMachGen) {
 				}
 			}
 			if (coloring[nid] > 0) continue;
-			if (!node.spill && !forcedSpill) return codegen.context.fail1("no colors available for v%d", nid);
-			// mustSpill only forces the very first coloring attempt to spill; once the
-			// allocator has retired this vreg to a DefSlot/Use(null, ...) (no longer
-			// referenced by any operand), it must not keep re-forcing actualSpill forever
-			// on every subsequent round (the outer `while (actualSpill)` loop in allocate()
-			// would otherwise never terminate).
-			vreg.mustSpill = false;
+			if (!node.spill && !vreg.mustSpill) return codegen.context.fail1("no colors available for v%d", nid);
+			vreg.mustSpill = false; // once the first attempt to spill suceeds, no longer need to keep re-forcing the spill
 			if (!actualSpill) {
 				// A new spill round will be required.
 				spillRound++;

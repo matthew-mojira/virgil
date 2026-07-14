@@ -760,7 +760,6 @@ class WasmCodeGen extends SsaMachGen {
 				emit1(WasmOp.NOP.opcode, kill(0));
 			}
 			ForceSpill => {
-				// no physical spilling on Wasm; identity, same idiom as IntViewP
 				emit2(ArchInstrs.ARCH_NOP, dfn(i), use(i.input0()));
 			}
 
