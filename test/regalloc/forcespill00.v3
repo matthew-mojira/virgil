@@ -1,6 +1,5 @@
 //@execute -1=-1; 0=0; 111222333=111222333
 
-// Sanity: forcing a spill must never change the value observed afterward.
 def main(a: int) -> int {
 	var x = CiTest.forceSpill(a);
 	return x;
