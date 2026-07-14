@@ -155,12 +155,6 @@ class Printer(printer: VstPrinter) {
 			}
 		}
 	}
-	def printRepHints(repHints: List<VstRepHint>) {
-		for (node = repHints; node != null; node = node.tail) {
-			printRepHint(node.head);
-			Terminal.putc(' ');
-		}
-	}
 	def printToken(t: Token) {
 		Terminal.put1("%s", t.image);
 	}
@@ -440,7 +434,8 @@ class VstPrinter extends VstVisitor<int, void> {
 		printStmt(c.stmt, indent);
 	}
 	def printPattern(c: MatchPattern, indent: int) {
-		printExpr(c.expr, indent); // XXX: print parameters
+		if (c.expr != null) printExpr(c.expr, indent); // XXX: print parameters
+		if (c.vdecl != null) printVar(c.vdecl, indent);
 	}
 	def printVar(vdecl: VarDecl, indent: int) {
 		var buf = StringBuilder.new();

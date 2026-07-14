@@ -8,8 +8,7 @@ class Program {
 	// file and argument portions of the program
 	def ERROR = ErrorGen.new(15);		// error generator
 	var files: Array<string>;		// the input files
-	var inputs: Array<Array<byte>>;		// the input data
-	var args: Array<string>;		// input arguments
+	var inputs: Array<Array<byte>>;		// the input file contents
 	var opBuilder: IrOpMethodBuilder;
 	// static parts of the program
 	def typeCache = TypeCache.new();
@@ -95,9 +94,7 @@ class Program {
 				if (prev != null) return prev;
 				var ct = ClassType.!(t);
 				var decl = ct.classDecl;
-				if (decl.superclass == null) {
-					if (decl.cases != null && decl.cases.length > 0) t = decl.cases[0].decl.typeCon.create(t.nested);
-				}
+				if (decl.cases != null && decl.cases.length > 0) t = decl.cases[0].decl.typeCon.create(t.nested);
 				var ic = ir.makeIrClass(t);
 				var record = newRecord(t, ic.fields.length);
 				record.h0 = 0;

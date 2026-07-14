@@ -74,6 +74,11 @@ class IrClass extends IrItem {
 		}
 		return m;
 	}
+	def getRepTag() -> int {
+		var r = this;
+		while (r.parent != null) r = r.parent;
+		return this.minClassId - r.minClassId;
+	}
 }
 // represents a member of a class, component, or variant
 class IrMember(receiver: Type) extends IrItem {
@@ -363,19 +368,6 @@ class IrModule {
 			ic = ic.parent;
 		}
 		return IrSpec.new(classType, Arrays.replace(irSpec.typeArgs, 0, classType), m);
-	}
-	def resolveVariantDefaultMethodImpl(irSpec: IrSpec) -> IrSpec {
-		var receiver = irSpec.receiver;
-		var superType = V3.getSuperType(receiver);
-		while (superType != null) {
-			receiver = superType;
-			superType = V3.getSuperType(receiver);
-		}
-		var variantDecl = V3.classDecl(receiver);
-		if (variantDecl.cases.length == 0) return irSpec;
-		var first = variantDecl.cases[0];
-		if (first == null) return irSpec;
-		return resolveMethodImpl(V3.getSyntheticVariantType(receiver, first), irSpec);
 	}
 	def setIrClass(ctype: Type, ic: IrClass) {
 		classMap[ctype] = ic;
