@@ -1,0 +1,7 @@
+//@execute =1
+
+// Forcing a spill of a constant SSA value must still round-trip correctly.
+def main() -> int {
+	var x = CiTest.forceSpill(42);
+	return if(x == 42, 1, 0);
+}

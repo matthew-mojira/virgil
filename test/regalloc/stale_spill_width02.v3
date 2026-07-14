@@ -1,0 +1,47 @@
+//@execute =68
+
+// Non-recursive reproduction targeting GlobalRegAlloc (-O2/-O3). `probe` forces
+// a 13-value interference clique (off + 12 longs) so `off` gets spilled to an
+// 8-byte slot with only its low 4 bytes written. `poison` forces the same
+// clique with all-equal args so its spilled value writes the full 8-byte
+// constant 0x1122334455667788 into the analogous slot in its own frame.
+// `#no-inline` keeps `poison` out-of-line; `CiTest.killRegisters()` plus the
+// q0..q3 locals pad poison's frame to align its spilled slot with `off`'s slot
+// in probe's frame. `main` calls `poison` then `probe` back-to-back so
+// probe's frame reuses poison's just-vacated stack address (LIFO reuse):
+// `off`'s low 4 bytes get overwritten normally but poison's high 4 bytes
+// survive, corrupting the pointer arithmetic in `buf[off ... off+4]`.
+def poison(x0: long, x1: long, x2: long, x3: long, x4: long, x5: long,
+           x6: long, x7: long, x8: long, x9: long, x10: long, x11: long, x12: long) -> long #no-inline {
+	var base = x0 ^ x1 ^ x2 ^ x3 ^ x4 ^ x5 ^ x6 ^ x7 ^ x8 ^ x9 ^ x10 ^ x11 ^ x12;
+	// Frame-size padding: each q_i crosses a register-killing point, forcing one more spill slot.
+	var q0: long = 2000L;
+	CiTest.killRegisters();
+	base = base ^ q0;
+	var q1: long = 2001L;
+	CiTest.killRegisters();
+	base = base ^ q1;
+	var q2: long = 2002L;
+	CiTest.killRegisters();
+	base = base ^ q2;
+	var q3: long = 2003L;
+	CiTest.killRegisters();
+	base = base ^ q3;
+	return base;
+}
+
+def probe(off: int, x0: long, x1: long, x2: long, x3: long, x4: long, x5: long,
+          x6: long, x7: long, x8: long, x9: long, x10: long, x11: long) -> int {
+	var buf: Array<byte> = [10, 11, 12, 13, 14, 15, 16, 17];
+	var r = buf[off ... off + 4]; // the wide pointer+offset op
+	var sum = 0;
+	for (b in r) sum = sum + b;
+	var acc = x0 ^ x1 ^ x2 ^ x3 ^ x4 ^ x5 ^ x6 ^ x7 ^ x8 ^ x9 ^ x10 ^ x11;
+	return sum + off + int.view(acc);
+}
+
+def main() -> int {
+	var p = 0x1122334455667788L; // poison value that leaks
+	poison(p, p, p, p, p, p, p, p, p, p, p, p, p);
+	return probe(2, 1L, 2L, 3L, 4L, 5L, 6L, 7L, 8L, 9L, 10L, 11L, 12L);
+}

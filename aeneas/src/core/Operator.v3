@@ -438,6 +438,9 @@ component V3Op {
 	def newReturnTo(returnType: Type, ptrType: Type) -> Operator {
 		return newOp0(Opcode.ReturnTo, [returnType, ptrType], [ptrType, returnType], Void.TYPE);
 	}
+	def newForceSpill(tp: Type) -> Operator {
+		return newOp0(Opcode.ForceSpill, [tp], [tp], tp);
+	}
 //----------------------------------------------------------------------------
 	def newSystemCall(syscall: SystemCall, paramTypes: Array<Type>, returnType: Type) -> Operator {
 		return newOp0(Opcode.SystemCall(syscall), arr_v, paramTypes, returnType);

@@ -1,0 +1,13 @@
+//@execute =1
+
+// Exercise every RegClass branch of emitForceSpill: I64, F32, F64, REF.
+def main() -> int {
+	var lv = CiTest.forceSpill(123456789012345L);
+	var fv = CiTest.forceSpill(1.5f);
+	var dv = CiTest.forceSpill(2.5d);
+	var arr: Array<byte> = [1, 2, 3, 4];
+	var rv = CiTest.forceSpill(arr);
+	var ok = (lv == 123456789012345L) && (fv == 1.5f) && (dv == 2.5d) &&
+		(rv == arr) && (rv.length == 4);
+	return if(ok, 1, 0);
+}

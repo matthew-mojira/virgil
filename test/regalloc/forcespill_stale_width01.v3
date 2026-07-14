@@ -1,0 +1,32 @@
+//@execute =12
+
+// Same hazard as forcespill_stale_width00.v3, tuned to reproduce at -O0
+// (SimpleRegAlloc) instead of -O2. The 7 padding CiTest.forceSpill calls ahead
+// of the poison spill are load-bearing: they occupy 7 of call1's own spill
+// slots so the poison's slot lands at the exact stack offset probe's forced
+// `off` spill reuses. Each padding value is force-spilled (not just a plain
+// local) so the alignment is achieved by the same mechanism as the poison/off
+// spills, not by relying on -O0's own "spill everything" behavior. -O1 is
+// immune, as always.
+def call1(poison: long) -> long #no-inline {
+	CiTest.forceSpill(2000L); // padding: occupies spill#7, not the shared slot
+	CiTest.forceSpill(2001L); // padding: occupies spill#6, not the shared slot
+	CiTest.forceSpill(2002L); // padding: occupies spill#5, not the shared slot
+	CiTest.forceSpill(2003L); // padding: occupies spill#4, not the shared slot
+	CiTest.forceSpill(2004L); // padding: occupies spill#3, not the shared slot
+	CiTest.forceSpill(2005L); // padding: occupies spill#2, not the shared slot
+	CiTest.forceSpill(2006L); // padding: occupies spill#1, not the shared slot
+	return CiTest.forceSpill(poison); // writes poison's 8 bytes into spill#0, the shared slot
+}
+
+def probe(off: int) -> int {
+	var buf: Array<byte> = [10, 11, 12, 13, 14, 15, 16, 17];
+	var o = CiTest.forceSpill(off); // overwrites only the low 4 bytes of spill#0, the shared slot
+	var r = buf[o ... o + 4]; // the wide pointer+offset op
+	return int.view(r[0]);
+}
+
+def main() -> int {
+	call1(0x1122334455667788L);
+	return probe(2);
+}

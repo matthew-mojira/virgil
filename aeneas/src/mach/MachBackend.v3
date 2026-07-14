@@ -46,6 +46,7 @@ class VReg {
 	var prev: VReg;			// prev link for list management
 	var next: VReg;			// next link for list management
 	var spill: int;			// assigned spill slot (< 0 indicates a constant)
+	var mustSpill: bool;		// if true, GlobalRegAlloc must never color this into a register (see colorGraph)
 	var endPos: int;		// last live position
 	var spillRound: int;		// avoids repeated spilling in GRA
 	// -- state for stackifier -----------------------------

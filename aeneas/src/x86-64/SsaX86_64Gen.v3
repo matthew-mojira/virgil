@@ -153,6 +153,7 @@ class SsaX86_64Gen extends SsaMachGen {
 			IntViewI => emitIntViewI(i);
 			IntViewB => emitIntViewB(i);
 			IntViewP => return emitMovq(i);
+			ForceSpill => emitForceSpill(i);
 			FloatViewI(is64) => {
 				emit2(if(is64, I_MOVSD, I_MOVSS) | (AM_XMM_REG << AM_SHIFT), dfnReg(i), useReg(i.input0()));
 			}
@@ -430,6 +431,20 @@ class SsaX86_64Gen extends SsaMachGen {
 	}
 	def emitMovq(i: SsaApplyOp) {
 		emit2(I_MOVQ | (AM_REG_OP << AM_SHIFT), dfnReg(i), use(i.input0()));
+	}
+	def emitForceSpill(i: SsaApplyOp) {
+		if (numVars(i) != 1) return context.fail("CiTest.forceSpill only supports scalar (single-VReg) types");
+		var vreg = getVReg(i);        // fresh VReg for this node, distinct from getVReg(i.input0())
+		allocSpill(vreg);             // idempotent; sets vreg.spill to a concrete stack slot now
+		vreg.mustSpill = true;        // consumed by GlobalRegAlloc.colorGraph()
+		var opcode: int;
+		match (vreg.regClass) {
+			I32 => opcode = I_MOVD  | (AM_OP_REG << AM_SHIFT);
+			F32 => opcode = I_MOVSS | (AM_OP_XMM << AM_SHIFT);
+			F64 => opcode = I_MOVSD | (AM_OP_XMM << AM_SHIFT);
+			_   => opcode = I_MOVQ  | (AM_OP_REG << AM_SHIFT); // I64, REF
+		}
+		emit2(opcode, dfnFixed(i, vreg.spill), useReg(i.input0()));
 	}
 	def emitIntDivMod(i: SsaApplyOp, isMod: bool) {
 		var it = IntType.!(i.op.typeArgs[0]);

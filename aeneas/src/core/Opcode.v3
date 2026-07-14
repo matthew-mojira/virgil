@@ -187,6 +187,7 @@ type Opcode {
 	case WasmFunctionId;
 	// For testing the register allocator
 	case KillRegisters;
+	case ForceSpill;
 	// Call
 	case CallAddress(p: Mach_FuncRep);
 	case CallKernel(kernel: Kernel);
