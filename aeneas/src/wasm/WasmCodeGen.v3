@@ -13,6 +13,11 @@ class WasmCodeGen extends SsaMachGen {
 	def GC = (WasmGcProgram.?(wasm));
 	def wasmGc = if(GC, WasmGcProgram.!(wasm));
 	def getWasmType: (Type -> WasmValueType) = if(GC, wasmGc.wasmGcType, wasm.wasmType);
+	def getBlockType(t: Type) -> WasmBlockType {
+		var valType = getWasmType(t);
+		if (WasmValueType.Void.?(valType)) return WasmBlockType.EmptyBlock;
+		return WasmBlockType.ValueType(valType);
+	}
 	def rt: MachRuntime;
 	def stackgen = if(GC, WasmGcStackInstrGen.new(wasmGc), WasmStackInstrGen.new(wasm));
 	var stackifier: MachStackifier;
@@ -100,10 +105,10 @@ class WasmCodeGen extends SsaMachGen {
 			}
 			Block(t, bi) => {
 				blockEnd = cursor;
-				emit1(WasmOp.BLOCK.opcode, useInt(getWasmType(t).toInt()));
+				emit1(WasmOp.BLOCK.opcode, useInt(getBlockType(t).toInt()));
 			}
 			Loop(bi) => {
-				emit1(WasmOp.LOOP.opcode, useInt(WasmValueType.Void.toInt()));
+				emit1(WasmOp.LOOP.opcode, useInt(WasmBlockType.EmptyBlock.toInt()));
 				blockEnd = cursor;
 			}
 			Body(bi) => {
@@ -122,7 +127,7 @@ class WasmCodeGen extends SsaMachGen {
 			If(split, val, t, join) => {
 				context.block = split;
 				blockEnd = cursor;
-				emit2(WasmOp.IF.opcode, useInt(getWasmType(t).toInt()), use(val));
+				emit2(WasmOp.IF.opcode, useInt(getBlockType(t).toInt()), use(val));
 			}
 			Else => {
 				emit0(WasmOp.ELSE.opcode);
@@ -251,7 +256,7 @@ class WasmCodeGen extends SsaMachGen {
 			PtrAdd => emitBinop(i, WasmOp.I32_ADD);
 			PtrSub => emitBinop(i, WasmOp.I32_SUB);
 			ConditionalThrow => {
-				emit2(WasmOp.IF.opcode, useInt(WasmValueType.Void.toInt()), use(i.inputs[0].dest));
+				emit2(WasmOp.IF.opcode, useInt(WasmBlockType.EmptyBlock.toInt()), use(i.inputs[0].dest));
 				emitN(WasmOp.UNREACHABLE.opcode);
 				emitN(WasmOp.END.opcode);
 			}
@@ -702,7 +707,7 @@ class WasmCodeGen extends SsaMachGen {
 				var badTmp = newTmpVReg(WasmValueType.I32);
 				emit3(WasmOp.I32_GE_U.opcode, dfnv0(badTmp), use(i.input1()), usev0(lenTmp));
 
-				emit2(WasmOp.IF.opcode, useInt(WasmValueType.Void.toInt()), usev0(badTmp));
+				emit2(WasmOp.IF.opcode, useInt(WasmBlockType.EmptyBlock.toInt()), usev0(badTmp));
 				emitN(WasmOp.UNREACHABLE.opcode);
 				emitN(WasmOp.END.opcode);
 			}
@@ -724,7 +729,7 @@ class WasmCodeGen extends SsaMachGen {
 				emit2(WasmOp.I32_CONST.opcode, dfnv0(kTmp), useInt(typeId));
 				var badTmp = newTmpVReg(WasmValueType.I32);
 				emit3(WasmOp.I32_NE.opcode, dfnv0(badTmp), usev0(tagTmp), usev0(kTmp));
-				emit2(WasmOp.IF.opcode, useInt(WasmValueType.Void.toInt()), usev0(badTmp));
+				emit2(WasmOp.IF.opcode, useInt(WasmBlockType.EmptyBlock.toInt()), usev0(badTmp));
 				emitN(WasmOp.UNREACHABLE.opcode);
 				emitN(WasmOp.END.opcode);
 				// XXX: nop needed to forward input value
@@ -1044,9 +1049,13 @@ class WasmCodeGen extends SsaMachGen {
 			WasmOp.LOOP.opcode,
 			WasmOp.BLOCK.opcode,
 			WasmOp.IF.opcode => {
-				var val = toInt(a[0]); // XXX: introduce a toBlockType() helper?
-				if (val < 0) w.put_sleb32(val);
-				else w.putb(WasmTypeConCode.REF_NULL.code).put_sleb32(val - 1);
+				match (toBlockType(a[0])) {
+					EmptyBlock => w.put_sleb32(WasmTypeConCode.EmptyBlock.val);
+					ValueType(wvt) => match (wvt) {
+						RefNull(ht) => w.putb(WasmTypeConCode.REF_NULL.code).put_sleb32(int.!(ht.index - 1));
+						_ => w.put_sleb32(wvt.toInt());
+					}
+				}
 			}
 
 			WasmOp.BR.opcode => w.put_uleb32(u32.!(toInt(a[0])));
@@ -1837,6 +1846,10 @@ class WasmCodeGen extends SsaMachGen {
 		if (out != null) return out;
 		return out = WasmInstrBuffer.new(this, context.prog, regSet);
 	}
+	def toBlockType(o: Operand) -> WasmBlockType {
+		return WasmBlockTypes.decode(Int.unbox(Operand.Immediate.!(o).val), if(GC, wasmGc.gcTypeTable));
+	}
+
 }
 class WasmInstrBuffer extends ArchInstrBuffer {
 	new(codegen: SsaMachGen, prog: Program, regSet: MachRegSet) super(codegen, prog, regSet) { }
@@ -1849,16 +1862,18 @@ class WasmInstrBuffer extends ArchInstrBuffer {
 			WasmOp.LOOP.opcode => {
 				putIndent(indent);
 				puts(name);
-				var val = codegen.toInt(a[0]);
 				yellow();
-				match (val) {
-					WasmTypeConCode.EmptyBlock.val => ; // do nothing
-					WasmTypeConCode.I32.val => puts(": i32");
-					WasmTypeConCode.I64.val => puts(": i64");
-					WasmTypeConCode.F32.val => puts(": f32");
-					WasmTypeConCode.F64.val => puts(": f64");
-					WasmTypeConCode.FUNCREF.val => puts(": funcref");
-					_ => put1(": refnull %d", val);
+				match (WasmCodeGen.!(codegen).toBlockType(a[0])) {
+					EmptyBlock => ; // do nothing
+					ValueType(wvt) => match (wvt) {
+						RefNull(ht) => put1(": refnull %d", ht.index - 1);
+						I32 => puts(": i32");
+						I64 => puts(": i64");
+						F32 => puts(": f32");
+						F64 => puts(": f64");
+						FuncRef => puts(": funcref");
+						_ => put1(": valtype %d", wvt.toInt());
+					}
 				}
 				end();
 				if (a.length > 1) sp().putOperand(a[1]);
