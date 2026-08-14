@@ -2,7 +2,7 @@
 // See LICENSE for details of Apache 2.0 license.
 
 type WasmValueType {
-	case Void; // XXX: only for block types
+	case Void;
 	case I32;
 	case I64;
 	case F32;
@@ -102,6 +102,35 @@ type WasmValueType {
 			}
 			_ => return this.tag == other.tag;
 		}
+	}
+}
+type WasmBlockType {
+	case EmptyBlock {
+		def toInt() -> int { return WasmTypeConCode.EmptyBlock.val; }
+	}
+	case ValueType(valType: WasmValueType) {
+		def toInt() -> int { return valType.toInt(); }
+	}
+	def toInt() -> int;
+}
+component WasmBlockTypes {
+	def decode(val: int, table: WasmGcTypeTable) -> WasmBlockType {
+		if (val >= 0) return WasmBlockType.ValueType(WasmValueType.RefNull(table.heapTypeAt(val)));
+		if (val == WasmTypeConCode.EmptyBlock.val) return WasmBlockType.EmptyBlock;
+		var valType: WasmValueType;
+		match (val) {
+			WasmTypeConCode.I32.val => valType = WasmValueType.I32;
+			WasmTypeConCode.I64.val => valType = WasmValueType.I64;
+			WasmTypeConCode.F32.val => valType = WasmValueType.F32;
+			WasmTypeConCode.F64.val => valType = WasmValueType.F64;
+			WasmTypeConCode.FUNCREF.val => valType = WasmValueType.FuncRef;
+			WasmTypeConCode.EXTERNREF.val => valType = WasmValueType.ExternRef;
+			WasmTypeConCode.ANYREF.val => valType = WasmValueType.AnyRef;
+			WasmTypeConCode.EQREF.val => valType = WasmValueType.EqRef;
+			WasmTypeConCode.NONEREF.val => valType = WasmValueType.NoneRef;
+			_ => ; // unreachable
+		}
+		return WasmBlockType.ValueType(valType);
 	}
 }
 enum WasmPacking {

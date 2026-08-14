@@ -68,6 +68,11 @@ class WasmGcTypeTable(wasmType: Type -> WasmValueType, errgen: ErrorGen, ir: IrM
 	// for a type is one smaller than the WasmType index field.  Thus
 	// maxIndex is also the number of type indices assigned so far.
 	def var maxIndex: u32 = 0;
+	// Maps an assigned index back to its WasmHeapType
+	def var byIndex = Vector<WasmHeapType>.new();
+	def heapTypeAt(index: int) -> WasmHeapType {
+		return byIndex[index - 1];
+	}
 
 	def var indicesAssigned = false;
 
@@ -387,6 +392,7 @@ class WasmGcTypeTable(wasmType: Type -> WasmValueType, errgen: ErrorGen, ir: IrM
 						deferred.put(wti);
 					} else {
 						wt.index = ++maxIndex;
+						byIndex.put(wt);
 						sorted.put(wti);
 					}
 				}
@@ -402,6 +408,7 @@ class WasmGcTypeTable(wasmType: Type -> WasmValueType, errgen: ErrorGen, ir: IrM
 		// TODO: deal with any canonicalization
 		typeGroups.put(Vectors.of1(wht.getTypeInfo()));
 		wht.index = ++maxIndex;
+		byIndex.put(wht);
 	}
 
 	// Applies DFA minimization to the group, updating the vector's contents
