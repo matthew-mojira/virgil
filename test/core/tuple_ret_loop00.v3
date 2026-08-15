@@ -1,0 +1,13 @@
+//@execute 0=0; 3=6; 5=15
+def step(t: (int, int)) -> (int, int) {
+	return (t.0 + 1, t.1 + t.0 + 1);
+}
+def main(a: int) -> int {
+	// tuple value carried around a loop back-edge (a genuine Loop merge
+	// of tuple type), fed by repeated tuple-returning calls
+	var t = (0, 0);
+	while (t.0 < a) {
+		t = step(t);
+	}
+	return t.1;
+}

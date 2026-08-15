@@ -1,0 +1,8 @@
+//@execute 0=1; 1=2; 5=6
+def nested(x: int) -> (int, (int, int)) {
+	return (x, (x + 1, x + 2));
+}
+def main(a: int) -> int {
+	// nested tuple return; the outer first component is never projected
+	return nested(a).1.0;
+}
