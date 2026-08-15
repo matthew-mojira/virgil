@@ -111,11 +111,21 @@ type WasmBlockType {
 	case ValueType(valType: WasmValueType) {
 		def toInt() -> int { return valType.toInt(); }
 	}
+	case FuncType(wft: WasmFuncType) {
+		def toInt() -> int { return int.view(wft.index); }
+	}
 	def toInt() -> int;
 }
 component WasmBlockTypes {
-	def decode(val: int, table: WasmGcTypeTable) -> WasmBlockType {
-		if (val >= 0) return WasmBlockType.ValueType(WasmValueType.RefNull(table.heapTypeAt(val)));
+	def decode(val: int, table: WasmGcTypeTable, typeTable: WasmTypeTable) -> WasmBlockType {
+		if (val >= 0) {
+			if (table != null) {
+				var ht = table.heapTypeAt(val);
+				if (WasmFuncType.?(ht)) return WasmBlockType.FuncType(WasmFuncType.!(ht));
+				return WasmBlockType.ValueType(WasmValueType.RefNull(ht));
+			}
+			return WasmBlockType.FuncType(typeTable.funcTypeAt(val));
+		}
 		if (val == WasmTypeConCode.EmptyBlock.val) return WasmBlockType.EmptyBlock;
 		var valType: WasmValueType;
 		match (val) {
@@ -365,6 +375,8 @@ enum WasmMutabilityCode(code: byte) {
 class WasmTypeTable(wasmType: Type -> WasmValueType) {
 	def typeMap = HashMap<Signature, int>.new(Signature.hash, Signature.equals);
 	def buf = DataWriter.new().grow(100);
+	// Maps an assigned index back to its WasmFuncType
+	def byIndex = Vector<WasmFuncType>.new();
 	var rawMap: HashMap<(int, int), int>;
 	var count = 0;
 	new() {
@@ -389,11 +401,20 @@ class WasmTypeTable(wasmType: Type -> WasmValueType) {
 		if (index <= 0) {  // not found, add the entry
 			index = ++count;
 			rawMap[(before, len)] = index;
+			var wft = WasmFuncType.new(Arrays.map(params, wasmType), Arrays.map(rets, wasmType));
+			wft.index = u32.!(index);
+			byIndex.put(wft);
 		} else {  // found, remove the new entry and remove the old one
 			buf.trim(before);
 		}
 		typeMap[sig] = index;
 		return u32.!(index - 1);
+	}
+	def addFuncType(sig: Signature) -> WasmFuncType {
+		return byIndex[int.!(add(sig))];
+	}
+	def funcTypeAt(index: int) -> WasmFuncType {
+		return byIndex[index - 1];
 	}
 	def assignTypeIndices() { }	// used by WasmGc subclass
 	def hash(begin: int, len: int) -> int {

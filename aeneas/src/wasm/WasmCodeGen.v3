@@ -1055,6 +1055,7 @@ class WasmCodeGen extends SsaMachGen {
 						RefNull(ht) => w.putb(WasmTypeConCode.REF_NULL.code).put_sleb32(int.!(ht.index - 1));
 						_ => w.put_sleb32(wvt.toInt());
 					}
+					FuncType(wft) => w.put_sleb32(int.!(wft.index - 1));
 				}
 			}
 
@@ -1847,7 +1848,7 @@ class WasmCodeGen extends SsaMachGen {
 		return out = WasmInstrBuffer.new(this, context.prog, regSet);
 	}
 	def toBlockType(o: Operand) -> WasmBlockType {
-		return WasmBlockTypes.decode(Int.unbox(Operand.Immediate.!(o).val), if(GC, wasmGc.gcTypeTable));
+		return WasmBlockTypes.decode(Int.unbox(Operand.Immediate.!(o).val), if(GC, wasmGc.gcTypeTable), if(!GC, wasm.typeTable));
 	}
 
 }
@@ -1874,6 +1875,7 @@ class WasmInstrBuffer extends ArchInstrBuffer {
 						FuncRef => puts(": funcref");
 						_ => put1(": valtype %d", wvt.toInt());
 					}
+					FuncType(wft) => put1(": type %d", wft.index - 1);
 				}
 				end();
 				if (a.length > 1) sp().putOperand(a[1]);
