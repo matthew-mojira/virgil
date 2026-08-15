@@ -93,6 +93,12 @@ class MachStackifier(gen: SsaMachGen) {
 			}
 			var u = Operand.Use.!(o), vreg = u.vreg, ssa = vreg.ssa, s = vreg.stackIndex;
 			if (out != null) out.put3(" m=%d n=%d s=%d", maxStackIndex, nextHeight, s);
+			if (vreg.multiDef) {
+				// multiDef vregs are always loaded from a local, never left on the stack
+				if (out != null) out.put1(" ->loads[%d] (multiDef)\n", loads.length - loadStart);
+				loads.put(u);
+				continue;
+			}
 			if (s < -1) {
 				// vreg never seen before (e.g. constant, phi, param, in other block), cannot be on stack
 				if (out != null) out.put1(" ->loads[%d]\n", loads.length - loadStart);
@@ -117,7 +123,8 @@ class MachStackifier(gen: SsaMachGen) {
 			insertLoadsAfter(s, loadStart);
 			if (nextHeight == defStack.length) nextHeight = s;
 			loadStart = loads.length;
-			markLastDefAsConsumedFromStack(vreg);
+			// multiDef vregs cannot be left on the abstract stack
+			if (!vreg.multiDef) markLastDefAsConsumedFromStack(vreg);
 			maxStackIndex = s;
 		}
 		insertLoadsAfter(defStack.length, loadStart);
@@ -131,6 +138,8 @@ class MachStackifier(gen: SsaMachGen) {
 		}
 		// Process defs
 		var next = i.next;
+		var defCount = 0;
+		for (o in operands) if (Operand.Def.?(o)) defCount++;
 		for (o in operands) {
 			if (!Operand.Def.?(o)) continue;
 			var d = Operand.Def.!(o);
@@ -138,6 +147,7 @@ class MachStackifier(gen: SsaMachGen) {
 			var prev = d.vreg.stackIndex;
 			if (prev >= 0) defStack[prev] = -1; // redefined; invalidate previous entry
 			d.vreg.stackIndex = defStack.length;
+			d.vreg.multiDef = defCount > 1;
 			defs.put(i, d, false);
 			defStack.put(defs.length - 1);
 			insertPoint.set(defStack.length, next);
@@ -167,7 +177,8 @@ class MachStackifier(gen: SsaMachGen) {
 			var di = defStack[i];
 			if (di < 0) continue;
 			var vreg = defs[di].1.vreg;
-			pushOntoMoveStack(vreg, null);
+			// multiDef vregs are not on the stack; skip
+			if (!vreg.multiDef) pushOntoMoveStack(vreg, null);
 		}
 		setDefStackLength(0);
 		if (out != null) printMoveStack();

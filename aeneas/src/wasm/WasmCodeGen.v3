@@ -14,6 +14,11 @@ class WasmCodeGen extends SsaMachGen {
 	def wasmGc = if(GC, WasmGcProgram.!(wasm));
 	def getWasmType: (Type -> WasmValueType) = if(GC, wasmGc.wasmGcType, wasm.wasmType);
 	def getBlockType(t: Type) -> WasmBlockType {
+		if (t != null && Tuple.length(t) > 1) {
+			var sig = Signature.new(null, [], Tuple.toTypeArray(t));
+			var wft = if(GC, wasmGc.gcTypeTable.addSignature(sig), wasm.typeTable.addFuncType(sig));
+			return WasmBlockType.FuncType(wft);
+		}
 		var valType = getWasmType(t);
 		if (WasmValueType.Void.?(valType)) return WasmBlockType.EmptyBlock;
 		return WasmBlockType.ValueType(valType);
@@ -765,6 +770,7 @@ class WasmCodeGen extends SsaMachGen {
 			KillRegisters => {
 				emit1(WasmOp.NOP.opcode, kill(0));
 			}
+			TupleGetElem => ; // do nothing; calls will define their projections
 
 			_ => return context.fail1("unexpected opcode %s in WASM codegen", i.op.opcode.name);
 		}

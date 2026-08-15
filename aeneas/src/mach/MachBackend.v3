@@ -52,6 +52,7 @@ class VReg {
 	var usage = Usage.NONE;
 	var parmoveState: int;
 	var stackIndex = -2;
+	var multiDef: bool;		// true if defined alongside sibling(s) by the same instruction
 
 	new(ssa, varNum, varSize, isConst: bool) {
 		if (isConst) spill = -2 - varNum; // constants have invalid spill slots
@@ -838,26 +839,9 @@ class SsaMachGen(context: SsaContext, mach: MachProgram, regSet: MachRegSet, w: 
 		operands.put(Operand.Label(block, order[block.info.srpo_num].info.label));
 	}
 	def dfnAll(i: SsaInstr) {
-		var rv = getVReg(i);
-		match (rv.varSize) {
-			0 => ;
-			1 => dfn(i);
-			_ => {
-				var proj = Array<SsaInstr>.new(rv.varSize);
-				for (l: Edge<SsaInstr> = i.useList; l != null; l = l.next) {
-					var u = l.src;
-					if (SsaApplyOp.?(u)) {
-						match (SsaApplyOp.!(u).op.opcode) {
-							TupleGetElem(index) => proj[index] = u;
-							_ => ;
-						}
-					}
-				}
-				for (j < rv.varSize) {
-					operands.put(Operand.Def(vars[rv.varNum + j], 0));
-				}
-			}
-		}
+		var rv = getProjections(SsaApplyOp.!(i));
+		// if there are multiple values, unused values get a placeholder register
+		for (r in rv) dfnv0(if(r != null, getVReg(r), newVReg(null)));
 	}
 	def dfn(i: SsaInstr) {
 		operands.put(Operand.Def(getVReg(i), 0));

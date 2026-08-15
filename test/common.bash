@@ -407,6 +407,11 @@ function execute_tests() {
             (compile_target_tests jvm -jvm.script=false) || exit $?
             (execute_target_tests jvm) || exit $?
 	    continue
+	elif [[ "$target" = "wasm" || "$target" = "wasm-gc" ]]; then
+            for opts in "" "-wasm.multi-value=true"; do
+                (compile_target_tests $target $opts) || exit $?
+                (execute_target_tests $target) || exit $?
+            done
 	else
             (compile_target_tests $target) || exit $?
             (execute_target_tests $target) || exit $?
