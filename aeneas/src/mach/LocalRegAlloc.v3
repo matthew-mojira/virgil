@@ -123,6 +123,11 @@ class LocalRegAlloc(regSet: MachRegSet, codegen: SsaMachGen) {
 				}
 			}
 			return constraint;
+		} else if (vreg.mustSpill && prevReg != 0) {
+			// Force a genuine reload from the spill slot rather than reusing the current register.
+			spillReg(prevReg, next);
+			regState.freeReg(prevReg, true);
+			loc = reassignReg(vreg, findBestLoc(vreg.regClass, vreg.hint, constraint));
 		} else if (isOk(vreg, constraint)) {
 			regState.updateUsePos(prevReg);
 		} else {

@@ -248,7 +248,17 @@ class X86CodeGen extends OldCodeGen {
 				gen(".kill", asm_kill_registers, (i.source));
 				root = true;
 			}
-			ForceSpill => id(i, makeVar(i.input0()));
+			ForceSpill => {
+				var vreg = makeVar(i);
+				if (vreg.varSize != 1) {
+					context.fail("CiTest.forceSpill only supports scalar (single-VReg) types");
+				} else if (vreg.regClass == RegClass.I64) {
+					id(i, makeVar(i.input0())); // TODO: wide (register-pair) spilling not yet supported here
+				} else {
+					var spill = frame.allocSpill(vreg.regClass);
+					gen("forcespill", asm_forcespill, (dfnAt(vreg, spill), use(i.input0())));
+				}
+			}
 			CallKernel(kernel) =>	root = genCallKernel(i, v, kernel);
 			ReturnTo =>		root = genReturnTo(i);
 		} else {
@@ -1560,6 +1570,9 @@ class X86CodeGen extends OldCodeGen {
 	}
 	def loc_sm(loc: int) -> SSERm {
 		return asm.loc_sm(frame, loc);
+	}
+	def asm_forcespill(dest: int, a: int) {
+		asm_movd_l_l(loc(a), loc(dest));
 	}
 	def asm_movd_l_l(src: int, dst: int) {
 		if (src <= 0) return; // nothing to do
