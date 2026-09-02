@@ -52,7 +52,6 @@ class VReg {
 	var usage = Usage.NONE;
 	var parmoveState: int;
 	var stackIndex = -2;
-	var multiDef: bool;		// true if defined alongside sibling(s) by the same instruction
 
 	new(ssa, varNum, varSize, isConst: bool) {
 		if (isConst) spill = -2 - varNum; // constants have invalid spill slots
