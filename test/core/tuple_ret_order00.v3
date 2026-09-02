@@ -1,0 +1,10 @@
+//@execute 0=1100; 1=2102; 5=6110
+def pair(x: int) -> (int, int) {
+	return (x + 1, x * 2 + 100);
+}
+def main(a: int) -> int {
+	// non-commutative combination of the two results: swapping them changes
+	// the answer, unlike the symmetric uses in the other tuple_ret tests
+	var r = pair(a);
+	return r.0 * 1000 + r.1;
+}

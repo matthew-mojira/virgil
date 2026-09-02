@@ -1,0 +1,11 @@
+//@execute 0=1; 1=0; 5=-4
+def pair(x: int) -> (int, int) {
+	return (x + 1, x * 10);
+}
+def main(a: int) -> int {
+	// non-commutative combination, projection first: reordering the operands
+	// changes the sign of the result, not just its magnitude
+	var x = a * 2;
+	var r = pair(a);
+	return r.0 - x;
+}

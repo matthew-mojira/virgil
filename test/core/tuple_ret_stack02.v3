@@ -1,0 +1,11 @@
+//@execute 0=101; 1=1114; 5=5166
+def pair(x: int) -> (int, int) {
+	return (x + 1, x * 10);
+}
+def main(a: int) -> int {
+	// two values live across the call, and both projections are consumed
+	var x = a * 2;
+	var y = a * 1000;
+	var r = pair(a);
+	return r.0 + x + y + r.1 + 100;
+}

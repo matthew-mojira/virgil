@@ -1,0 +1,14 @@
+//@execute 0=100; 1=101; 5=105
+class Box { var v: int; new(v) { } }
+def make(x: int) -> (Box, int) {
+	return (Box.new(x), x + 1);
+}
+def main(a: int) -> int {
+	// the reference result is kept and the integer result is dropped, with the
+	// dropped slot live across the allocations below
+	var b = make(a).0;
+	for (i < 8) {
+		var junk = Box.new(i);
+	}
+	return b.v + 100;
+}

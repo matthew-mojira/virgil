@@ -1,0 +1,12 @@
+//@execute 0=1; 1=4; 5=16
+def pair(x: int) -> (int, int) {
+	return (x + 1, x * 10);
+}
+def main(a: int) -> int {
+	// {x} is computed before the call and is still live across it, so it may
+	// remain on the abstract operand stack; the projection {r.0} is the
+	// earlier operand of the addition
+	var x = a * 2;
+	var r = pair(a);
+	return r.0 + x;
+}

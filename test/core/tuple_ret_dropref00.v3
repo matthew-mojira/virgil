@@ -1,0 +1,16 @@
+//@execute 0=28; 1=29; 5=33
+class Box { var v: int; new(v) { } }
+def make(x: int) -> (Box, int) {
+	return (Box.new(x), x + 1);
+}
+def main(a: int) -> int {
+	// both results are dropped, so each gets a placeholder register; the
+	// integer result must not be reported to the GC as a reference
+	make(a);
+	var acc = 0;
+	for (i < 8) {
+		var b = Box.new(i);
+		acc = acc + b.v;
+	}
+	return acc + a;
+}

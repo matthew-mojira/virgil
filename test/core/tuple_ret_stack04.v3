@@ -1,0 +1,12 @@
+//@execute 0=1; 2=7; 5=1006
+class Box { var v: int; new(v) { } }
+def pair(x: int) -> (int, int) {
+	return (x + 1, x * 10);
+}
+def main(a: int) -> int {
+	// a reference-typed value is live across the multi-value call, so the
+	// interaction is with a reference stack slot, not just an integer one
+	var b = Box.new(if(a > 3, 1000, a * 2));
+	var r = pair(a);
+	return r.0 + b.v;
+}

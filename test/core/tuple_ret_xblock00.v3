@@ -1,0 +1,13 @@
+//@execute 0=2; 2=23; 5=56
+def pair(x: int) -> (int, int) {
+	return (x + 1, x * 10);
+}
+def main(a: int) -> int {
+	// the call is in the entry block, but both projections are consumed in
+	// later blocks, which the stackifier visits before the defining block
+	var r = pair(a);
+	var s = 0;
+	if (a > 1) s = r.1;
+	else s = r.0;
+	return s + r.0;
+}

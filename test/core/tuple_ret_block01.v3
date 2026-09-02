@@ -1,0 +1,11 @@
+//@execute 0=12; 3=341; 5=561
+def sel(x: int) -> (int, (int, int)) {
+	// a nested tuple flattens to three results, giving a typed block type with
+	// more than two results
+	if (x > 2) return (x, (x + 1, 1));
+	return (x, (x + 1, 2));
+}
+def main(a: int) -> int {
+	var r = sel(a);
+	return r.0 * 100 + r.1.0 * 10 + r.1.1;
+}
