@@ -771,6 +771,20 @@ class WasmCodeGen extends SsaMachGen {
 				emit1(WasmOp.NOP.opcode, kill(0));
 			}
 			TupleGetElem => ; // do nothing; calls will define their projections
+			ForceGc => {
+				var gcmeth = if(!GC, rt.getRiGc());
+				if (gcmeth == null) return; // no runtime GC (e.g. WasmGc); nop
+				// call RiRuntime.gc() with a size of 0 to force a collection
+				var result = newTmpVReg(WasmValueType.I32); // unused; dropped by stackifier
+				dfnv0(result);
+				if (useShadowStack) refmap(null);
+				var zero = context.graph.zeroConst();
+				use(zero); // size
+				use(zero); // ip
+				use(zero); // sp
+				useInt(gcmeth.machIndex);
+				emitN(WasmOp.CALL.opcode);
+			}
 
 			_ => return context.fail1("unexpected opcode %s in WASM codegen", i.op.opcode.name);
 		}
@@ -1351,7 +1365,7 @@ class WasmCodeGen extends SsaMachGen {
 					context.fail1("constant function %d has no indirect adapter index", m.machIndex);
 				assemble(WasmOp.I32_CONST.opcode, [Operand.Immediate(Int.box(wasmGc.indirectAdapterIndexFor[m]))]);
 			}
-			OOP,
+			ANYREF,
 			CLASS,
 			ARRAY,
 			VARIANT => {
@@ -1800,11 +1814,11 @@ class WasmCodeGen extends SsaMachGen {
 				if (!wasmGc.indirectAdapterIndexFor.has(m))
 					context.fail1("constant function %d has no indirect adapter index", m.machIndex);
 				if (CLOptions.PRINT_WASM_GC.get()) {
-					printDetail().put1("OOP/FUNCREF indirect index is %d", wasmGc.indirectAdapterIndexFor[m]).outln();
+					printDetail().put1("ANYREF/FUNCREF indirect index is %d", wasmGc.indirectAdapterIndexFor[m]).outln();
 				}
 				emit1(WasmOp.I32_CONST.opcode, useImm(Int.box(wasmGc.indirectAdapterIndexFor[m])));
 			}
-			OOP,
+			ANYREF,
 			CLASS,
 			ARRAY,
 			VARIANT => {

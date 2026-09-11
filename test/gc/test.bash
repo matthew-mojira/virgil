@@ -8,36 +8,13 @@ else
   ALL_TESTS=$(cat *.gc)
 fi
 
-function set_rt_files() {
-    target=$1
-    N="$RT_LOC/native/"
-    GC_SOURCES="${GC_LOC}/*.v3"
-
-    if [ "$target" = "x86-darwin" ]; then
-	export RT_FILES="$RT_LOC/x86-darwin/*.v3 $N/*.v3 $GC_SOURCES ./TagUtils.v3"
-    elif [ "$target" = "x86-64-darwin" ]; then
-	export RT_FILES="$RT_LOC/x86-64-darwin/*.v3 $N/*.v3 $GC_SOURCES ./TagUtils.v3"
-    elif [ "$target" = "x86-linux" ]; then
-	export RT_FILES="$RT_LOC/x86-linux/*.v3 $N/*.v3 $GC_SOURCES ./TagUtils.v3"
-    elif [ "$target" = "x86-64-linux" ]; then
-	export RT_FILES="$RT_LOC/x86-64-linux/*.v3 $N/*.v3 $GC_SOURCES ./TagUtils.v3"
-    elif [ "$target" = "arm64-linux" ]; then
-	export RT_FILES="$RT_LOC/arm64-linux/*.v3 $N/*.v3 $GC_SOURCES ./TagUtils.v3"
-    elif [ "$target" = "wasm" ]; then
-	export RT_FILES="./EmptySystem.v3 $N/NativeGlobalsScanner.v3 $N/NativeFileStream.v3 $GC_SOURCES ./TagUtils.v3"
-    fi
-}
-
 
 function compile_gc_tests() {
     local SHARDING=80
     local target=$1
     shift
 
-    # The 4k shadow stack is sized for the micro tests indexed by the other .gc
-    # files. The test/smoke tests are medium-sized by design and recurse deeper,
-    # so they are compiled in a separate shard with more shadow stack; the
-    # per-test //@heap-size directive overrides -heap-size for both shards.
+    # TODO: special-casing on smoke test size
     local micro="" smoke=""
     for t in "$@"; do
 	case "$t" in
@@ -46,7 +23,7 @@ function compile_gc_tests() {
 	esac
     done
 
-    RT_OPT="-rt.files=$(echo $RT_FILES)"
+    RT_OPT="-rt.files=$RT_FILES"
     compile_gc_shard "$target" 4k $micro
     compile_gc_shard "$target" 256k $smoke
 }
@@ -63,6 +40,8 @@ function compile_gc_shard() {
     local i=1
     while [ $i -le $# ]; do
 	local args=${@:$i:$SHARDING}
+        echo "TESTS=$args" > $T/compile-shard.$i
+        echo CMD=$AENEAS_TEST -symbols -output=$T -target=$target-test -tr -rt.gc -rt.gctables -rt.test-gc -rt.sttables -set-exec=false -shadow-stack-size=$sstack -heap-size=10k "$RT_OPT" -multiple >> $T/compile-shard.$i
 	run_v3c "" -symbols -output=$T -target=$target-test -tr -rt.gc -rt.gctables -rt.test-gc -rt.sttables -set-exec=false -shadow-stack-size=$sstack -heap-size=10k "$RT_OPT" -multiple $args
 	i=$(($i + $SHARDING))
     done
@@ -97,7 +76,7 @@ function do_int_test() {
 }
 
 function do_exe_test() {
-    set_rt_files $target
+    RT_FILES="$(get_rt_files $target) $(get_gc_files $target) ./TagUtils.v3"
     T=$OUT/$target
     mkdir -p $T
     C=$T/compile.out

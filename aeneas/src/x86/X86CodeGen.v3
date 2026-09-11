@@ -255,6 +255,7 @@ class X86CodeGen extends OldCodeGen {
 				gen(".kill", asm_kill_registers, (i.source));
 				root = true;
 			}
+			ForceGc =>		root = genForceGc(i);
 			CallKernel(kernel) =>	root = genCallKernel(i, v, kernel);
 			ReturnTo =>		root = genReturnTo(i);
 		} else {
@@ -655,6 +656,14 @@ class X86CodeGen extends OldCodeGen {
 		}
 		return true;
 	}
+	def genForceGc(i: SsaApplyOp) -> bool {
+		if (mach.gcStub == null) return false; // no runtime GC; nop
+		// generate a call to the forced-GC stub
+		var lp = if(mach.runtime.gc != null, livePoint());
+		kill(Regs.ALL);
+		gen("forcegc", asm_force_gc, (lp, i.source));
+		return true;
+	}
 	def genCall(call: SsaApplyOp, rv: VReg, funcRep: Mach_FuncRep) -> bool {
 		var func = call.input0(), mi: MachInstr;
 		var conv = frame.allocCallerSpace(X86VirgilCallConv.getForFunc(mach, funcRep));
@@ -811,9 +820,9 @@ class X86CodeGen extends OldCodeGen {
 		if (optag == Opcode.IntMul.tag) {
 			var y = i.input1();
 			if (SsaConst.?(y)) { // match i = x * K
-				var scale = byte.view(y.unbox<int>());
+				var scale = y.unbox<int>();
 				match (scale) {
-					1, 2, 4, 8 => return (i.input0(), scale);
+					1, 2, 4, 8 => return (i.input0(), byte.view(scale));
 				}
 			}
 		} else if (optag == Opcode.IntShl.tag) {
@@ -1386,6 +1395,13 @@ class X86CodeGen extends OldCodeGen {
 		var pos = asm.pos();
 		asm.xadd(X86Addrs.ABS_PATCH, rd);
 		recordPatch(pos, CiRuntimeModule.HEAP_CUR_LOC);
+	}
+	def asm_force_gc(lp: int, source: Source) {
+		// call the shared forced-GC stub routine
+		asm.call_addr(mach.gcStub);
+		var off = asm.codeOffset();
+		if (rtgc != null) rtgc.recordStackRefMap(off, source, buildStackMap(off, null, lp));
+		if (rtsrc != null) rtsrc.recordReturnSource(off, source);
 	}
 	def asm_alloc_rt(lp: int, source: Source) {
 		// call a shared allocation stub routine

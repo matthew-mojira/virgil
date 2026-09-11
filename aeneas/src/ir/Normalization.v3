@@ -20,7 +20,7 @@ class NormalizerConfig {
 
 	var GetScalar: (Compiler, Program, Type) -> Scalar.set = defaultGetScalar;
 	var GetBitWidth: Type -> byte = defaultGetBitWidth;
-	var MaxScalarWidth: byte = 64;
+	var MaxScalarWidth: byte = 64u8;
 
 	def setSignatureLimits(maxp: int, maxr: int) {
 		if (maxp < MaxParams) MaxParams = maxp;
@@ -168,7 +168,10 @@ class ReachabilityNormalizer(config: NormalizerConfig, ra: ReachabilityAnalyzer)
 		} else if (!rc.isUnboxed()) {
 			// create and map new records to be normalized
 			for (l = rc.instances; l != null; l = l.tail) {
-				var oldRecord = l.head, newRecord = ra.prog.newRecord(tn.newType, rc.liveFields.length);
+				var oldRecord = l.head;
+				var newRecord = if(oldRecord.isDefault(),
+					ra.prog.newDefaultRecord(tn.newType, rc.liveFields.length),
+					ra.prog.newRecord(tn.newType, rc.liveFields.length));
 				recordMap[oldRecord] = newRecord;
 				normQueue.add(normClassRecord, (rc, oldRecord, newRecord)); // XXX: inline normClassRecord
 			}
@@ -283,8 +286,8 @@ class ReachabilityNormalizer(config: NormalizerConfig, ra: ReachabilityAnalyzer)
 				var pt = limit(Function.getParamType(t), config.MaxParams);
 				var rt = limit(Function.getReturnType(t), config.MaxReturnValues);
 				var ft = Function.FUNCREF.create(Lists.cons2(pt.0, rt.0));
-				var ta = [ft, Oop.TYPE];
-				tn = FuncNorm.new(t, Tuple.newType(Lists.cons2(ft, Oop.TYPE)), pt.1, rt.1, ta);
+				var ta = [ft, MachModule.getAnyRefType()];
+				tn = FuncNorm.new(t, Tuple.newType(Lists.cons2(ft, MachModule.getAnyRefType())), pt.1, rt.1, ta);
 			}
 			FUNCREF => {
 				var pt = limit(Function.getParamType(t), config.MaxParams);
@@ -407,9 +410,11 @@ class ReachabilityNormalizer(config: NormalizerConfig, ra: ReachabilityAnalyzer)
 		var rc = ra.getClass(oldRecord.rtype);
 		if (rc.variantNorm == null) {
 			// Variant is boxed, just normalize it as a record.
-			var newRecord = ra.prog.newRecord(vn.newType, rc.liveFields.length);
-			normalizeFields(rc.fields, oldRecord.values, newRecord.values);
+			var newRecord = if(oldRecord.isDefault(),
+				ra.prog.newDefaultRecord(vn.newType, rc.liveFields.length),
+				ra.prog.newRecord(vn.newType, rc.liveFields.length));
 			recordMap[oldRecord] = newRecord;
+			normalizeFields(rc.fields, oldRecord.values, newRecord.values);
 			result[0] = newRecord;
 		} else if (vn.isEnum()) {
 			// Variant is represented by a simple enum.
@@ -535,7 +540,7 @@ class ReachabilityNormalizer(config: NormalizerConfig, ra: ReachabilityAnalyzer)
 		var values = Array<Val>.new(tn.size);
 		normValIntoArray(v, tn, values, 0);
 		if (tn.size == 1) return values[0];
-		return BoxVal.new(null, values);
+		return BoxVal.new(values);
 	}
 	def layoutVtable(rc: RaClass) {
 		var vtable = Vector<IrMethod>.new();
@@ -773,13 +778,11 @@ class ReachabilityNormalizer(config: NormalizerConfig, ra: ReachabilityAnalyzer)
 		if (rc.raFacts.RC_LIVE) ic.flags |= IrFlag.C_HEAP;
 		if (rc.raFacts.RC_ALLOC) ic.flags |= IrFlag.C_ALLOCATED;
 		if (rc.raFacts.RC_ENUM) ic.flags |= IrFlag.C_ENUM;
-		// Propagate descriptor flags from the original class, but only if the program uses
-		// descriptor extensions. Otherwise a descriptor is just an ordinary field and
-		// described objects keep the normal object header.
-		if (rc.orig != null && ra.descriptorExtensions) {
-			if (rc.orig.flags.C_HAS_DESCRIPTOR) ic.flags |= IrFlag.C_HAS_DESCRIPTOR;
-			if (rc.orig.flags.C_IS_DESCRIPTOR) ic.flags |= IrFlag.C_IS_DESCRIPTOR;
-		}
+		// Only hierarchies with a branded descriptor use descriptor headers; elsewhere a
+		// descriptor is an ordinary field. C_HAS_DESCRIPTOR reserves offset 0 for that field,
+		// so it must agree with {ReachabilityAnalyzer.useDescriptorHeader}.
+		if (ra.usesDescriptorHeader(rc)) ic.flags |= IrFlag.C_HAS_DESCRIPTOR;
+		if (ra.usesDescriptorSlots(rc)) ic.flags |= IrFlag.C_IS_DESCRIPTOR;
 		newIr.setIrClass(rc.newIrType, ic);
 		var i = 0;
 		for (f in ic.fields) {
@@ -837,7 +840,7 @@ class OverflowFieldAllocator(decl: VstComponent, receiver: Type, anyref: bool) {
 	def next(t: Type) -> IrSpec {
 		if (anyref) {
 			match (t.typeCon.kind) {
-				CLASS, ARRAY, CLOSURE => t = Oop.TYPE;
+				CLASS, ARRAY, CLOSURE => t = MachModule.getAnyRefType();
 				FUNCREF => t = AnyFunction.TYPE;
 				_ => ;
 			}
