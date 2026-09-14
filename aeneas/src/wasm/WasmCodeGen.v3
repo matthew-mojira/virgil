@@ -15,8 +15,11 @@ class WasmCodeGen extends SsaMachGen {
 	def getWasmType: (Type -> WasmValueType) = if(GC, wasmGc.wasmGcType, wasm.wasmType);
 	def getBlockType(t: Type) -> WasmBlockType {
 		var valType = getWasmType(t);
-		if (WasmValueType.Void.?(valType)) return WasmBlockType.EmptyBlock;
-		return WasmBlockType.ValueType(valType);
+		match (valType) {
+			Void => return WasmBlockType.EmptyBlock;
+			RefNull(ht) => return WasmBlockType.RefNullType(ht.index);
+			_ => return WasmBlockType.ValueType(valType);
+		}
 	}
 	def rt: MachRuntime;
 	def stackgen = if(GC, WasmGcStackInstrGen.new(wasmGc), WasmStackInstrGen.new(wasm));
@@ -1065,11 +1068,9 @@ class WasmCodeGen extends SsaMachGen {
 			WasmOp.IF.opcode => {
 				match (toBlockType(a[0])) {
 					EmptyBlock => w.put_sleb32(WasmTypeConCode.EmptyBlock.val);
-					ValueType(wvt) => match (wvt) {
-						RefNull(ht) => w.putb(WasmTypeConCode.REF_NULL.code).put_sleb32(int.!(ht.index - 1));
-						_ => w.put_sleb32(wvt.toInt());
-					}
-					FuncType(wft) => w.put_sleb32(int.!(wft.index - 1));
+					ValueType(wvt) => w.put_sleb32(wvt.toInt());
+					RefNullType(index) => w.putb(WasmTypeConCode.REF_NULL.code).put_sleb32(int.view(index) - 1);
+					FuncType(index) => w.put_sleb32(int.view(index) - 1);
 				}
 			}
 
@@ -1862,7 +1863,7 @@ class WasmCodeGen extends SsaMachGen {
 		return out = WasmInstrBuffer.new(this, context.prog, regSet);
 	}
 	def toBlockType(o: Operand) -> WasmBlockType {
-		return WasmBlockTypes.decode(Int.unbox(Operand.Immediate.!(o).val), if(GC, wasmGc.gcTypeTable), if(!GC, wasm.typeTable));
+		return WasmBlockTypes.decode(Int.unbox(Operand.Immediate.!(o).val));
 	}
 
 }
@@ -1881,7 +1882,6 @@ class WasmInstrBuffer extends ArchInstrBuffer {
 				match (WasmCodeGen.!(codegen).toBlockType(a[0])) {
 					EmptyBlock => ; // do nothing
 					ValueType(wvt) => match (wvt) {
-						RefNull(ht) => put1(": refnull %d", ht.index - 1);
 						I32 => puts(": i32");
 						I64 => puts(": i64");
 						F32 => puts(": f32");
@@ -1889,7 +1889,8 @@ class WasmInstrBuffer extends ArchInstrBuffer {
 						FuncRef => puts(": funcref");
 						_ => put1(": valtype %d", wvt.toInt());
 					}
-					FuncType(wft) => put1(": type %d", wft.index - 1);
+					RefNullType(index) => put1(": refnull %d", index - 1);
+					FuncType(index) => put1(": type %d", index - 1);
 				}
 				end();
 				if (a.length > 1) sp().putOperand(a[1]);
