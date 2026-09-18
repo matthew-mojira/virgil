@@ -1469,6 +1469,8 @@ class SsaInstrReducer(context: SsaContext) extends SsaInstrMatcher {
 		var optag = x.optag();
 		// Look through TypeSubsumes at a potentially more precise receiver.
 		while (optag == Opcode.TypeSubsume.tag) {
+			var ta = SsaApplyOp.!(x).op.typeArgs;
+			if (!TypeSystem.isSubtype(ta[0], ta[1])) break; // downcast; input is less precise
 			x = SsaApplyOp.!(x).inputs[0].dest;
 			optag = x.optag();
 		}
