@@ -1,0 +1,15 @@
+//@execute 0=0
+class A { }
+class B extends A {
+	def m() -> int { return 1; }
+}
+class C extends B {
+	def m() -> int { return 2; }
+}
+def main(a: int) -> int {
+	var x: A = A.new();
+	match (x) {
+		y: B => return y.m();
+	}
+	return 0;
+}
