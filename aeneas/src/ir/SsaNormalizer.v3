@@ -724,113 +724,47 @@ class SsaRaNormalizer extends SsaRebuilder {
 	}
 	// normalize an equality operator
 	def normEqualOp(i_old: SsaApplyOp, op: Operator) {
-		var tn = normTypeArg(op, 0);
-		var refs = genRefs(i_old.inputs);
+		var tn = normTypeArg(op, 0), refs = genRefs(i_old.inputs);
+		map1(i_old, genEqual(i_old, tn, refs[0 ... tn.size], refs[tn.size ...]));
+	}
+	// Compare two values of normalized type {tn}, given as their scalars.
+	def genEqual(i_old: SsaApplyOp, tn: TypeNorm, xs: Range<SsaInstr>, ys: Range<SsaInstr>) -> SsaInstr {
 		match (tn) {
 			x: VariantNorm => {
-				if (!x.isEnum()) return map1(i_old, normUnboxedVariantEqual(i_old, x, refs));
-				if (hasUnequalCase(x.oldType)) return map1(i_old, normEnumVariantEqual(i_old, x, refs));
+				if (norm.ra.getClass(x.oldType).raFacts.RC_ENUM) return genEnumVariantEqual(x, xs, ys);
+				return genUnboxedVariantEqual(i_old, x, xs, ys);
 			}
-			_ => if (V3.isVariant(tn.newType)) return map1(i_old, normVariantEqual(i_old, tn.newType, refs[0], refs[1]));
+			x: TupleNorm => {
+				var expr: SsaInstr;
+				for (i < x.nested.length) {
+					var n = x.nested[i], start = x.offsets[i], end = start + n.size;
+					expr = opAnd(expr, genEqual(i_old, n, xs[start ... end], ys[start ... end]));
+				}
+				return if(expr == null, newGraph.trueConst(), expr);
+			}
+			_ => ;
 		}
-		map1(i_old, normEqual(i_old, tn, refs));
+		if (tn.size == 1) return genScalarEqual(i_old, tn.newType, xs[0], ys[0]);
+		var expr: SsaInstr;
+		for (i < tn.size) expr = opAnd(expr, genScalarEqual(i_old, tn.sub[i], xs[i], ys[i]));
+		return if(expr == null, newGraph.trueConst(), expr);
 	}
-	def normEqual1(i_old: SsaApplyOp, t: Type, x: SsaInstr, y: SsaInstr) -> SsaInstr {
+	// Compare two scalars of type {t}.
+	def genScalarEqual(i_old: SsaApplyOp, t: Type, x: SsaInstr, y: SsaInstr) -> SsaInstr {
 		if (V3.isVariant(t)) return normVariantEqual(i_old, t, x, y);
-		if (t.typeCon.kind == Kind.FUNCREF) return normSimpleEqualOp0(i_old, null, t, x, y);
+		if (t.typeCon.kind == Kind.FUNCREF && norm.config.WrapFuncTypeSubsume) {
+			return norm.ra.prog.wrappers.opEqual(curBlock, norm.context.method, t, x, y);
+		}
 		return curBlock.opEqual(t, x, y);
 	}
-	def normEqual(i_old: SsaApplyOp, tn: TypeNorm, refs: Array<SsaInstr>) -> SsaInstr {
-		if (tn.size == 0) return newGraph.trueConst();
-		if (tn.size == 1) return normEqual1(i_old, tn.newType, refs[0], refs[1]);
-
-		var expr: SsaInstr;
-		for (i < tn.size) {
-			var cmp = normEqual1(i_old, tn.sub[i], refs[i], refs[i + tn.size]);
-			expr = if(expr == null, cmp, opBoolAnd(expr, cmp));
-		}
-		return expr;
-	}
-	private def getWrappee(x: SsaInstr, val: Val) -> SsaInstr {
-		if (FuncVal.?(val)) {
-			var spec = FuncVal.!(val).memberRef;
-			if (spec.asMethod().flags.M_WRAPPER) {
-				var wrappee = spec;
-				while (norm.ra.prog.wrappers.wrappeeForWrapper.has(wrappee))
-					wrappee = norm.ra.prog.wrappers.wrappeeForWrapper[wrappee];
-				if (CLOptions.PRINT_WRAP.get()) {
-					FunctionWrapping.printWrap().put3("substituting wrappee %q{%d/%d}", wrappee.render,
-							 wrappee.asMethod().index, wrappee.asMethod().uid)
-						   .put3(" for %q{%d/%d}", spec.render, spec.asMethod().index, spec.asMethod().uid).outln();
-				}
-				return funcRef(wrappee);
-			}
-		}
-		return x;
-	}
-	def normSimpleEqualOp0(i_old: SsaApplyOp, op: Operator, t: Type, x: SsaInstr, y: SsaInstr) -> SsaInstr {
-		if (norm.config.WrapFuncTypeSubsume &&
-		    t.typeCon.kind == Kind.FUNCREF &&
-		    (norm.context.method.flags & IrUtil.M_MAP_UNMAP) == IrUtil.NO_FLAGS) {
-			if (CLOptions.PRINT_WRAP.get()) {
-				FunctionWrapping.printWrap().put1("normalizing function comparison @%d", i_old.uid).outln();
-				SsaPrinter.new().printInstrLn(x).printInstrLn(y).buf.outln();
-			}
-			// unmap any constant arguments
-			var xconst = SsaConst.?(x);
-			var xval = if(xconst, SsaConst.!(x).val, null);
-			var xnull = xconst && xval == null;
-
-			var yconst = SsaConst.?(y);
-			var yval = if(yconst, SsaConst.!(y).val, null);
-			var ynull = yconst && yval == null;
-
-			if (xconst && !xnull) x = getWrappee(x, xval);
-			if (yconst && !ynull) y = getWrappee(y, yval);
-
-			var unmapper: IrSpec;
-			// Two known functions do not need a run-time unmapper
-			if (xconst && yconst) {
-				if (CLOptions.PRINT_WRAP.get()) {
-					FunctionWrapping.printWrap().puts("Comparing two known functions, no unmapper needed");
-				}
-			}
-			// Comparison with null does not require unmapping
-			else if (xnull || ynull) {
-				if (CLOptions.PRINT_WRAP.get()) {
-					FunctionWrapping.printWrap().puts("Comparing with null, no unmapper needed");
-				}
-			}
-			else if ((unmapper = norm.ra.prog.wrappers.getUnmapper(t)) != null) {
-				// insert unmapping for non-const argument(s)
-				// (if unmapper is null, unmapping is not needed for this type)
-				if (!xconst) {
-					if (CLOptions.PRINT_WRAP.get()) {
-						FunctionWrapping.printWrap().puts("first comparand needs unmapping");
-					}
-					var op = V3Op.newCallMethod(unmapper);
-					var args = [curBlock.graph.nullReceiver(), x];
-					x = curBlock.addApply(null, op, args);
-				}
-				if (!yconst) {
-					if (CLOptions.PRINT_WRAP.get()) {
-						FunctionWrapping.printWrap().puts("second comparand needs unmapping");
-					}
-					var op = V3Op.newCallMethod(unmapper);
-					var args = [curBlock.graph.nullReceiver(), y];
-					y = curBlock.addApply(null, op, args);
-				}
-				return curBlock.opEqualOf(V3Op.newRefEq(AnyFunction.TYPE), x, y);
-			}
-		}
-		if (op == null) op = V3Op.newEqual(t);
-		return curBlock.opEqualOf(op, x, y);
-	}
+	// Normalize IntEq or RefEq, which compare a single scalar and are never structural.
 	def normSimpleEqualOp(i_old: SsaApplyOp, op: Operator) {
-		var refs = genRefs(i_old.inputs);
-		var tn = normTypeArg(op, 0);
-		var i_new = normSimpleEqualOp0(i_old, op, tn.newType, refs[0], refs[tn.size]);
-		return map1(i_old, i_new);
+		var tn = normTypeArg(op, 0), refs = genRefs(i_old.inputs);
+		var t = tn.newType, x = refs[0], y = refs[tn.size];
+		if (t.typeCon.kind == Kind.FUNCREF && norm.config.WrapFuncTypeSubsume) {
+			return map1(i_old, norm.ra.prog.wrappers.opEqual(curBlock, norm.context.method, t, x, y));
+		}
+		map1(i_old, curBlock.opEqualOf(op, x, y));
 	}
 	def normVariantEqual(i_old: SsaApplyOp, t: Type, x: SsaInstr, y: SsaInstr) -> SsaInstr {
 		var rc = norm.ra.getClass(t);
@@ -875,86 +809,124 @@ class SsaRaNormalizer extends SsaRebuilder {
 		for (l = rc.subtypes; l != null; l = l.tail) if (isUnequalCase(l.head.oldType)) return true;
 		return isUnequalCase(t);
 	}
-	// Normalize equality of a variant represented by only its tag. The tags must match, and
-	// the case must not be one that is never equal to itself.
-	def normEnumVariantEqual(i_old: SsaApplyOp, vn: VariantNorm, refs: Array<SsaInstr>) -> SsaInstr {
-		var expr = normEqual(i_old, vn, refs);
+	// Returns true if values of type {tn} compare correctly as raw bits/references: no float, boxed
+	// variant or wrapped function inside. Nested variants are checked by field, since scalars unify types.
+	def canCompareBitwise(tn: TypeNorm) -> bool {
+		match (tn) {
+			x: VariantNorm => {
+				for (l = liveCaseNorms(x); l != null; l = l.tail) {
+					for (f in l.head.fields) if (f.indexes.length > 0 && !canCompareBitwise(f.tn)) return false;
+				}
+				return true;
+			}
+			x: TupleNorm => {
+				for (n in x.nested) if (!canCompareBitwise(n)) return false;
+				return true;
+			}
+			_ => ;
+		}
+		for (j < tn.size) {
+			var t = tn.at(j);
+			match (t.typeCon.kind) {
+				FLOAT => return false;
+				VARIANT => if (!norm.ra.prog.ir.isEnum(t)) return false;
+				FUNCREF => if (norm.config.WrapFuncTypeSubsume) return false;
+				_ => ;
+			}
+		}
+		return true;
+	}
+	// The live case norms of {vn}: itself if it is a case, otherwise its live subtypes.
+	def liveCaseNorms(vn: VariantNorm) -> List<VariantNorm> {
+		var rc = norm.ra.getClass(vn.oldType);
+		if (vn.fields.length > 0 || ClassType.!(vn.oldType).superType != null) return List.new(vn, null);
+		var list: List<VariantNorm>;
+		for (l = rc.subtypes; l != null; l = l.tail) {
+			if (l.head != rc && l.head.variantNorm != null) list = List.new(l.head.variantNorm, list);
+		}
+		return list;
+	}
+	// Compare two enum-represented variants; a case that folded a NaN is never equal to itself.
+	def genEnumVariantEqual(vn: VariantNorm, xs: Range<SsaInstr>, ys: Range<SsaInstr>) -> SsaInstr {
+		var expr = curBlock.opEqual(vn.tagType(), xs[0], ys[0]);
 		var rc = norm.ra.getClass(vn.oldType);
 		for (l = rc.subtypes; l != null; l = l.tail) {
 			var c = l.head;
 			if (!isUnequalCase(c.oldType)) continue;
 			var tag = newGraph.intConst(c.normClass.getRepTag());
-			expr = opBoolAnd(expr, curBlock.opBoolNot(curBlock.opEqual(vn.tagType(), refs[0], tag)));
+			expr = opBoolAnd(expr, curBlock.opBoolNot(curBlock.opEqual(vn.tagType(), xs[0], tag)));
 		}
 		return expr;
 	}
-	// Normalize equality between two unboxed variants of the same case (e.g. x: T.A == y: T.A)
-	def normUnboxedVariantCaseEqual(i_old: SsaApplyOp, vn: VariantNorm, refs: Array<SsaInstr>) -> SsaInstr {
-		if (isUnequalCase(vn.oldType)) return newGraph.falseConst();
-		var join = opBoolAnd;
-		var expr: SsaInstr;
-		for (i < vn.fields.length) {
-			var f = vn.fields[i];
-			for (j < f.indexes.length) {
-				var idx = f.indexes[j];
-				var cmp: SsaInstr, a = refs[idx], b = refs[idx + vn.size];
-				a = genVariantScalarView(vn.sub[idx], f.tn.at(j), a);
-				b = genVariantScalarView(vn.sub[idx], f.tn.at(j), b);
-				cmp = normEqual1(i_old, f.tn.at(j), a, b);
-				if (expr == null) expr = cmp;
-				else expr = join(expr, cmp);
+	// Compare two unboxed variants. Unused scalars and bits are zero, so bitwise scalars are compared
+	// whole; only scalars holding a structural field need a tag dispatch and per-field comparison.
+	def genUnboxedVariantEqual(i_old: SsaApplyOp, vn: VariantNorm, xs: Range<SsaInstr>, ys: Range<SsaInstr>) -> SsaInstr {
+		var cases = liveCaseNorms(vn);
+		var structural = Array<bool>.new(vn.size), any = false;
+		for (l = cases; l != null; l = l.tail) {
+			for (f in l.head.fields) {
+				if (f.indexes.length == 0 || canCompareBitwise(f.tn)) continue;
+				for (idx in f.indexes) structural[idx] = true; // the whole field is compared as a unit
+				any = true;
 			}
 		}
-		return if(expr != null, expr, newGraph.trueConst());
-	}
-	// Normalize equality between two unboxed variants of unknown case (e.g. x: T == y: T)
-	def normUnboxedVariantEqual(i_old: SsaApplyOp, vn: VariantNorm, refs: Array<SsaInstr>) -> SsaInstr {
-		// XXX: compare scalars, not individual fields.
-		if (vn.hasNoTag()) {
-			if (hasUnequalCase(vn.oldType)) return newGraph.falseConst();	// a dropped constant is never equal
-			return normEqual(i_old, vn, refs); // we can always do a scalar-by-scalar comparison if no boxes are involved.
+		var expr: SsaInstr;
+		for (i < vn.size) {
+			if (structural[i]) continue;
+			expr = opAnd(expr, curBlock.opEqual(vn.at(i), xs[i], ys[i]));
 		}
-		if (isUnequalCase(vn.oldType)) return newGraph.falseConst();
-		var ct = ClassType.!(vn.oldType);
-		if (ct.superType != null) return normUnboxedVariantCaseEqual(i_old, vn, refs);
+		// a case that folded a NaN is never equal to itself
+		for (l = cases; l != null; l = l.tail) {
+			if (!isUnequalCase(l.head.oldType)) continue;
+			if (vn.hasNoTag()) return newGraph.falseConst();
+			var xTag = normVariantGetRepTag(vn, xs), tag = newGraph.intConst(norm.ra.getClass(l.head.oldType).tagValue());
+			expr = opAnd(expr, curBlock.opBoolNot(curBlock.opEqual(vn.tagType(), xTag, tag)));
+		}
+		if (!any) return if(expr == null, newGraph.trueConst(), expr);
 
-		var xTag = normVariantGetRepTag(vn, refs[0 ... vn.size]);
-		var yTag = normVariantGetRepTag(vn, refs[vn.size ...]);
-
-		var tagsEqual = curBlock.opEqual(vn.tagType(), xTag, yTag);
+		if (cases.tail == null) return opAnd(expr, genCaseFieldsEqual(i_old, cases.head, structural, xs, ys));
+		var xTag = normVariantGetRepTag(vn, xs), yTag = normVariantGetRepTag(vn, ys);
 		var ifc = curBlock.splitForIfCascade(Bool.TYPE);
-
-		ifc.addNotCase(tagsEqual);
+		ifc.addNotCase(curBlock.opEqual(vn.tagType(), xTag, yTag));
 		ifc.endCase(newGraph.falseConst());
-
-		for (l = vn.children; l != null; l = l.tail) {
-			var cn = l.head;
-			var ic = norm.ra.getClass(cn.oldType);
-			var tag = ic.normClass.getRepTag();
+		for (l = cases; l != null; l = l.tail) {
+			var cn = l.head, tag = norm.ra.getClass(cn.oldType).tagValue();
 			ifc.addCase(curBlock.opEqual(vn.tagType(), xTag, newGraph.intConst(tag)));
-			var result = normUnboxedVariantCaseEqual(i_old, cn, refs);
-			ifc.endCase(result);
+			ifc.endCase(genCaseFieldsEqual(i_old, cn, structural, xs, ys));
 		}
-
 		ifc.addElse();
 		ifc.endCase(newGraph.falseConst());
-		return ifc.finish();
+		return opAnd(expr, ifc.finish());
+	}
+	// Compare the fields of case {vn} that occupy {structural} scalars.
+	def genCaseFieldsEqual(i_old: SsaApplyOp, vn: VariantNorm, structural: Array<bool>, xs: Range<SsaInstr>, ys: Range<SsaInstr>) -> SsaInstr {
+		var expr: SsaInstr;
+		for (f in vn.fields) {
+			var n = f.indexes.length, needed = false;
+			for (idx in f.indexes) if (structural[idx]) needed = true;
+			if (!needed) continue;
+			var fx = Array<SsaInstr>.new(n), fy = Array<SsaInstr>.new(n);
+			for (j < n) {
+				var idx = f.indexes[j], st = vn.sub[idx], ft = f.tn.at(j);
+				var a = xs[idx], b = ys[idx];
+				if (f.isPacked() && (IntType.?(st) || (AnyRefType.?(st) && vn.fixedBits != null))) {
+					// extract the packed field from the scalar before comparing
+					a = genExtractInterval(a, f.intervals[j], st, ft);
+					b = genExtractInterval(b, f.intervals[j], st, ft);
+				} else {
+					a = genVariantScalarView(st, ft, a);
+					b = genVariantScalarView(st, ft, b);
+				}
+				fx[j] = a;
+				fy[j] = b;
+			}
+			expr = opAnd(expr, genEqual(i_old, f.tn, fx, fy));
+		}
+		return if(expr == null, newGraph.trueConst(), expr);
 	}
 	def normVariantGetRepTag(vn: VariantNorm, args: Range<SsaInstr>) -> SsaInstr {
 		if (vn == null) return null;
-		if (vn.hasNoTag()) {
-			var tagValue = vn.tagValue;
-			if (tagValue < 0) {
-				// The variant has no tag, check live subtypes for possible live tag values.
-				var rc = norm.ra.getClass(vn.oldType);
-				var tl = rc.subtypes;
-				if (tl != null) {
-					var sn = VariantNorm.!(norm.norm(tl.head.oldType));
-					tagValue = sn.tagValue;
-				}
-			}
-			return newGraph.intConst(tagValue);
-		}
+		if (vn.hasNoTag()) return newGraph.intConst(norm.ra.getClass(vn.oldType).tagValue());
 		if (vn.hasExplicitTag() && vn.tag.isPacked()) {
 			var tag = vn.tag, tagIdx = tag.indexes[0], tagInterval = tag.intervals[0];
 			return genExtractInterval(args[tagIdx], tagInterval, vn.at(tagIdx), tag.tn.at(0));
@@ -1057,7 +1029,7 @@ class SsaRaNormalizer extends SsaRebuilder {
 					}
 					return;
 				}
-				if (atn != rtn && context.compiler.NormConfig.ExplicitRefTypeCast) {
+				if (atn != rtn && context.compiler.NormConfig.ExplicitRefTypeCast && !VariantNorm.?(rtn)) {
 					match (atn.oldType.typeCon.kind) {
 						ARRAY, CLASS, VARIANT, ANYREF => {
 							// assumes rtn.size is 1
@@ -1092,7 +1064,8 @@ class SsaRaNormalizer extends SsaRebuilder {
 				if (VariantNorm.?(atn) && VariantNorm.?(rtn)) {
 					var avn = VariantNorm.!(atn), rvn = VariantNorm.!(rtn);
 					var actualTag = normVariantGetRepTag(avn, ai_old[offset ...]);
-					curBlock.opIntRangeCheck(1, rvn.tagValue, rvn.maxTag + 1, actualTag);
+					var rrc = norm.ra.getClass(rvn.oldType);
+					curBlock.opIntRangeCheck(1, rrc.tagValue(), rrc.tagLimit(), actualTag);
 					for (i < avn.size) result.put(ai_old[offset + i]);
 					return;
 				}
@@ -1183,20 +1156,14 @@ class SsaRaNormalizer extends SsaRebuilder {
 					var avn = VariantNorm.!(atn), rvn = VariantNorm.!(rtn);
 					var actualTag = normVariantGetRepTag(avn, ai_old[offset ...]);
 					var tagType = avn.tagType();
+					var rrc = norm.ra.getClass(rvn.oldType), lo = rrc.tagValue(), hi = rrc.tagLimit();
 					var check: SsaInstr;
-					if (rvn.maxTag < 0) {
-						return newGraph.falseConst();
-					}
-					if (rvn.tagValue == rvn.maxTag) {
-						// Leaf (or uninitialized maxTag): exact equality test.
-						var expected = newGraph.intConst(rvn.tagValue);
-						check = curBlock.pure(V3Op.newIntEq(tagType), [actualTag, expected]);
+					if (hi <= lo) return newGraph.falseConst(); // no live cases
+					if (hi == lo + 1) {
+						check = curBlock.pure(V3Op.newIntEq(tagType), [actualTag, newGraph.intConst(lo)]);
 					} else {
-						// Non-leaf subtype: range test lo <= tag && tag <= hi.
-						var lo = newGraph.intConst(rvn.tagValue);
-						var hi = newGraph.intConst(rvn.maxTag);
-						var chkLo = curBlock.pure(tagType.opLtEq(), [lo, actualTag]);
-						var chkHi = curBlock.pure(tagType.opLtEq(), [actualTag, hi]);
+						var chkLo = curBlock.pure(tagType.opLtEq(), [newGraph.intConst(lo), actualTag]);
+						var chkHi = curBlock.pure(tagType.opLt(), [actualTag, newGraph.intConst(hi)]);
 						check = curBlock.opBoolAnd0(chkLo, chkHi);
 					}
 					return opAnd(left, check);
@@ -1731,7 +1698,7 @@ class SsaRaNormalizer extends SsaRebuilder {
 				x: FloatType => return curBlock.pure(if(x.is64, V3Op.opIntViewF64, V3Op.opIntViewF32), [i_scalar]);
 			}
 		}
-		if (AnyRefType.?(newType)) return i_scalar;
+		if (AnyRefType.?(newType) || AnyFuncType.?(newType)) return i_scalar;
 		return wrapTypeSubsume(curBlock, oldType, newType, i_scalar);
 	}
 	def normVariantAlloc(i_old: SsaInstr, op: Operator) {
@@ -1741,7 +1708,7 @@ class SsaRaNormalizer extends SsaRebuilder {
 		var vn = rc.variantNorm;
 		if (vn == null) {
 			// Variant is boxed. Simply a VariantAlloc with normalized fields.
-			norm.makeOrigFieldTypes(rc);
+			norm.makeOrigIndices(rc);
 			var lfs = rc.liveFields;
 			var ai_fields = Array<SsaInstr>.new(lfs.length);
 			var fieldTypes = Array<Type>.new(lfs.length);
@@ -1757,18 +1724,26 @@ class SsaRaNormalizer extends SsaRebuilder {
 			}
 			// XXX: cache VariantAllocOp
 			return map1(i_old, curBlock.pure(V3Op.newVariantAlloc(t, fieldTypes), ai_fields));
-		} else if (vn.isEnum()) {
+		} else if (rc.raFacts.RC_ENUM) {
 			// Variant is represented as an enum.
-			return map1(i_old, newGraph.intConst(vn.tagValue));
+			return map1(i_old, newGraph.intConst(rc.tagValue()));
 		} else {
 			// Variant is unboxed.
 			var result = Array<SsaInstr>.new(vn.size);
 			for (i < result.length) result[i] = newGraph.nullConst(vn.at(i));
+			// For tagged reference scalars, accumulate the non-reference bits and the reference separately
+			var bits: Array<SsaInstr>, refs: Array<SsaInstr>;
+			if (vn.fixedBits != null) {
+				bits = Array<SsaInstr>.new(vn.size);
+				refs = Array<SsaInstr>.new(vn.size);
+				for (i < vn.size) if (AnyRefType.?(vn.at(i))) bits[i] = taggedRefConst(vn.fixedBits[i]);
+			}
 
 			if (vn.hasExplicitTag()) {
-				var tagIdx = vn.tag.indexes[0];
-				if (IntRepType.?(vn.at(tagIdx))) result[tagIdx] = genSetInterval(result[tagIdx], newGraph.intConst(vn.tagValue), vn.tag.intervals[0], vn.tag.tn.newType, IntRepType.!(vn.at(tagIdx)));
-				else result[tagIdx] = newGraph.intConst(vn.tagValue);
+				var tagIdx = vn.tag.indexes[0], tagVal = newGraph.intConst(rc.tagValue());
+				if (bits != null && bits[tagIdx] != null) bits[tagIdx] = genSetInterval(bits[tagIdx], tagVal, vn.tag.intervals[0], vn.tag.tn.newType, taggedRefIntType());
+				else if (IntRepType.?(vn.at(tagIdx))) result[tagIdx] = genSetInterval(result[tagIdx], tagVal, vn.tag.intervals[0], vn.tag.tn.newType, IntRepType.!(vn.at(tagIdx)));
+				else result[tagIdx] = tagVal;
 			}
 			// Pack the fields into the correct scalars
 			for (i < vn.fields.length) {
@@ -1776,16 +1751,65 @@ class SsaRaNormalizer extends SsaRebuilder {
 				if (f.rf == null) continue;
 				var os = f.rf.origIndices.0;
 				for (j < f.indexes.length) {
-					var idx = f.indexes[j];
-					if (IntRepType.?(vn.at(idx)) && f.intervals != null) result[idx] = genSetInterval(result[idx], ai_inputs[os + j], f.intervals[j], f.tn.at(j), IntRepType.!(vn.at(idx)));
-					else result[idx] = genVariantScalarView(f.tn.at(j), vn.at(idx), ai_inputs[os + j]);
+					var idx = f.indexes[j], ft = f.tn.at(j), value = ai_inputs[os + j];
+					if (bits != null && bits[idx] != null) {
+						if (PrimType.?(ft)) bits[idx] = genSetInterval(bits[idx], value, f.intervals[j], ft, taggedRefIntType());
+						else refs[idx] = genRefToInt(ft, value);
+					}
+					else if (IntRepType.?(vn.at(idx)) && f.intervals != null) result[idx] = genSetInterval(result[idx], value, f.intervals[j], ft, IntRepType.!(vn.at(idx)));
+					else result[idx] = genVariantScalarView(ft, vn.at(idx), value);
+				}
+			}
+			if (bits != null) {
+				// Combine the reference (if any) with the non-reference bits into a tagged reference
+				for (i < vn.size) {
+					if (bits[i] == null) continue;
+					var v = bits[i];
+					if (refs[i] != null) v = curBlock.pure(taggedRefIntType().opOr(), [refs[i], v]);
+					result[i] = genIntToRef(v, vn.at(i));
 				}
 			}
 			return mapN(i_old, result);
 		}
 	}
+	// Returns the integer type used to manipulate the bits of a tagged reference.
+	def taggedRefIntType() -> IntType {
+		return Int.getType(false, norm.config.MaxScalarWidth);
+	}
+	// Returns a constant of the tagged reference integer type with the given bits.
+	def taggedRefConst(bits: u64) -> SsaInstr {
+		var it = taggedRefIntType();
+		if (it.width > 32) return newGraph.valConst(it, Long.box(long.view(bits)));
+		return newGraph.valConst(it, Int.box(int.view(bits)));
+	}
+	// Converts a reference of type {objType} to its (unsigned) integer bits.
+	def genRefToInt(objType: Type, i_ref: SsaInstr) -> SsaInstr {
+		var ptrType = MachModule.getPtrType(context.prog);
+		var opcache = Pointer_TypeCon.!(ptrType.typeCon).opcache();
+		var i_ptr = curBlock.pure(V3Op.newPtrAtObject(objType, ptrType), [i_ref]);
+		var i_int = curBlock.pure(opcache.opSub, [i_ptr, newGraph.nullConst(ptrType)]);
+		return curBlock.opIntView(opcache.it, taggedRefIntType(), i_int);
+	}
+	// Converts (unsigned) integer bits to a reference of type {refType}.
+	def genIntToRef(i_int: SsaInstr, refType: Type) -> SsaInstr {
+		var ptrType = MachModule.getPtrType(context.prog);
+		var opcache = Pointer_TypeCon.!(ptrType.typeCon).opcache();
+		var i_sint = curBlock.opIntView(taggedRefIntType(), opcache.it, i_int);
+		// The result must have a reference type so that it is treated as a reference by the GC
+		return curBlock.pure(V3Op.newPtrAdd(refType, opcache.it), [newGraph.nullConst(refType), i_sint]);
+	}
 	// Extracts an interval from a scalar
 	def genExtractInterval(scalar: SsaInstr, interval: Interval, ft: Type, tt: Type) -> SsaInstr {
+		// Case: Scalar is a tagged reference
+		if (AnyRefType.?(ft)) {
+			var it = taggedRefIntType();
+			if (PrimType.?(tt)) return genExtractInterval(genRefToInt(ft, scalar), interval, it, tt);
+			// Extract the reference itself by clearing the bits outside its interval
+			if (interval.size() >= it.width) return scalar;
+			var mask = taggedRefConst(((1uL << interval.size()) - 1) << interval.start);
+			var i_int = curBlock.pure(it.opAnd(), [genRefToInt(ft, scalar), mask]);
+			return genIntToRef(i_int, tt);
+		}
 		// Case: Scalar is FloatType
 		if (FloatType.?(ft)) {
 			def fft: FloatType = FloatType.!(ft);
@@ -1833,7 +1857,7 @@ class SsaRaNormalizer extends SsaRebuilder {
 		}
 		return null;
 	}
-	def genSetInterval(scalar: SsaInstr, value: SsaInstr, interval: Interval, ft: Type, tt: IntRepType) -> SsaInstr {
+	def genSetInterval(scalar: SsaInstr, value: SsaInstr, interval: Interval, ft: Type, tt: IntType) -> SsaInstr {
 		var intRep = genVariantScalarView(ft, tt, value);
 		var width = interval.size();
 		if (width < tt.width && isSignedRep(ft)) {
@@ -1868,6 +1892,8 @@ class SsaRaNormalizer extends SsaRebuilder {
 					def scalarIdx = field.indexes[i];
 					def interval = field.intervals[i];
 					def scalar = ninputs[scalarIdx];
+					def st = rc.variantNorm.at(scalarIdx);
+					if (AnyRefType.?(st) && rc.variantNorm.fixedBits != null) { vals[i] = genExtractInterval(scalar, interval, st, field.tn.at(i)); continue; }
 					if (!IntType.?(scalar.getType())) { vals[i] = scalar; continue; }
 					vals[i] = genExtractInterval(scalar, interval, scalar.getType(), field.tn.at(i));
 				}
@@ -1882,19 +1908,7 @@ class SsaRaNormalizer extends SsaRebuilder {
 		if (vn == null) {
 			return curBlock.addApply(curBlock.source, V3Op.newVariantGetRepTag(rc.oldType), Ranges.dup(args));
 		}
-		if (vn.hasNoTag()) {
-			var tagValue = vn.tagValue;
-			if (tagValue < 0) {
-				// The variant has no tag, check live subtypes for possible live tag values.
-				var rc = norm.ra.getClass(vn.oldType);
-				var tl = rc.subtypes;
-				if (tl != null) {
-					var sn = VariantNorm.!(norm.norm(tl.head.oldType));
-					tagValue = sn.tagValue;
-				}
-			}
-			return newGraph.intConst(tagValue);
-		}
+		if (vn.hasNoTag()) return newGraph.intConst(norm.ra.getClass(vn.oldType).tagValue());
 		if (vn.hasExplicitTag() && vn.tag.isPacked()) {
 			var tag = vn.tag, tagIdx = tag.indexes[0], tagInterval = tag.intervals[0];
 			return genExtractInterval(args[tagIdx], tagInterval, vn.at(tagIdx), tag.tn.at(0));
