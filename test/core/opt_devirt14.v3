@@ -1,0 +1,18 @@
+//@execute 0=2
+// The receiver is narrowed to B, but inlining reveals an allocation of C.
+class A { }
+class B extends A {
+	def m() -> int { return 1; }
+}
+class C extends B {
+	def m() -> int { return 2; }
+}
+def f(x: A) -> int {
+	match (x) {
+		y: B => return y.m();
+	}
+	return 0;
+}
+def main(a: int) -> int {
+	return f(C.new());
+}
